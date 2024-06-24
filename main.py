@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 24/06/2024
+    - Jensen Trillo, Version pre-1.0, 25/06/2024
 
     - ``Python 3.11.6``
 
@@ -22,7 +22,6 @@ class Manager:
         self._path = data_path  # Set data path
         self._key = self.__derive_key(password)  # Get the encryption key using password
         self._data = self.__read()  # Read the JSON file from data path using new encryption key
-
         # Kill and exit handlers
         signal(SIGINT, self.__write), signal(SIGTERM, self.__write)
         exit_register(self.__write)
@@ -53,40 +52,91 @@ class Manager:
             the service already exists, :class:`KeyError`
             will be raised.
 
-            :param name: :class:`str` Service name
+            :param name: :class:`str` Service name; `case-sensitive`
             :param data: :class:`dict` Data to start with; `default={}`
         """
-        if name in self._data:  # Already exists
-            raise KeyError
-        else:
+        if name not in self._data:
             self._data[name] = data
+        else:  # Already exists
+            raise KeyError
 
-    def change_service_name(self, name: str, new: str):
+    def rename_service(self, name: str, new: str):
         """
             Changes the name of an existing service.
 
             - If the service does not exist, :class:`KeyError`
               will be raised
             - If the new name conflicts with an existing service,
-              :class:`ValueError` will be raised.
+              :class:`ValueError` will be raised
 
-            :param name: :class:`str` Service name
-            :param new: :class:`str` New name
+            :param name: :class:`str` Service name; `case-sensitive`
+            :param new: :class:`str` New name; `case-sensitive`
         """
-        if name in self._data:  # Service exists
-            if new in self._data:  # New name conflicts with existing name
-                raise ValueError
-            else:
-                # Add service with new name and existing data, then delete old instance
-                self.add_service(new, self._data[name]), self.delete_service(name)
-        else:  # Service does not exist
-            raise KeyError
+        if new in self._data:  # New name conflicts with existing name
+            raise ValueError
+        else:
+            # Add service with new name and existing data, then delete old instance
+            self.add_service(new, self._data[name]), self.delete_service(name)
 
     def delete_service(self, name: str):
         """
-            Deletes the service :class:`KeyError` will be raised
+            Deletes the service. :class:`KeyError` will be raised
             if the service does not exist.
 
-            :param name: :class:`str` Service name
+            :param name: :class:`str` Service name; `case-sensitive`
         """
         del self._data[name]
+
+    # Account methods
+    def add_account(self, service: str, username: str, password: str):
+        """
+            Add a new account under the service.
+
+            - If the service does not exist, :class:`KeyError`
+              will be raised
+            - If the account already exists, :class:`ValueError` will be raised
+
+            :param service: :class:`str` Service which account will be under; `case-sensitive`
+            :param username: :class:`str` Account username; `case-sensitive`
+            :param password: :class:`str` Account password; `case-sensitive`
+        """
+        if username not in self._data[service]:
+            self._data[service][username] = password
+        else:  # Account already exists
+            raise ValueError
+
+    def edit_account(self, service: str, username: str, change: bool, new: str):
+        """
+            Edits the username or password of an account.
+
+            - If the service or account does not exist, :class:`KeyError`
+              will be raised
+            - ``change=True``; If the new username conflicts with an existing account,
+              :class:`ValueError` will be raised
+
+            :param service: :class:`str` Service which account is under; `case-sensitive`
+            :param username: :class:`str` Account username; `case-sensitive`
+            :param change: :class:`bool` ``True`` for editing the **username**, ``False`` for
+                **password**
+            :param new: :class:`str` New edited value; `case-sensitive`
+        """
+        if change:  # Edit username
+            if new in self._data[service]:  # Conflicting new username
+                raise ValueError
+            else:
+                # Add new account then delete old instance
+                self.add_account(service, new, self._data[service][username])
+                self.delete_account(service, username)
+        else:  # Edit password
+            self._data[service][username] = new
+
+    def delete_account(self, service: str, username: str):
+        """
+             Deletes the account under the service.
+             If the account or service does not exist,
+             :class:`KeyError` will be raised.
+
+             :param service: :class:`str` Service which account is under; `case-sensitive`
+             :param username: :class:`str` Account username; `case-sensitive`
+        """
+        del self._data[service][username]
