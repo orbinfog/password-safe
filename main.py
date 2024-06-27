@@ -119,9 +119,12 @@ class Manager:
             :param change: :class:`bool` ``True`` for editing the **username**, ``False`` for
                 **password**
             :param new: :class:`str` New edited value; `case-sensitive`
+            :returns: ``change=True``; :class:`bool` ``False`` if the new account name is the same as the current
         """
         if change:  # Edit username
-            if new in self._data[service]:  # Conflicting new username
+            if new == username:  # No change
+                return False
+            elif new in self._data[service]:  # Conflicting new username
                 raise ValueError
             else:
                 # Add new account then delete old instance
