@@ -1,12 +1,13 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 25/06/2024
+    - Jensen Trillo, Version pre-1.0, 2/07/2024
 
     - ``Python 3.11.6``
 
     **MIT License, Copyright (c) 2024 Jensen Trillo**
 """
+import customtkinter as ctk
 from ujson import dumps as json_dumps, loads as json_loads
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from cryptography.fernet import Fernet, InvalidToken
@@ -14,16 +15,28 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from gzip import open as gzip_open
 from atexit import register as exit_register
-from signal import signal, SIGINT, SIGTERM
+from misc_utils import init_kill_handlers, resource_path
+PATH = resource_path('assets/')  # Absolute asset path for files/resources
 
 
 class Manager:
+    """
+        Password manager system.
+
+        Raises
+        ------
+        - :class:`InvalidToken`: The password does not match
+          the one used to encrypt the provided data file
+
+        :param data_path: :class:`str` Path to ``.json`` data file
+        :param password: :class:`str` Data encryption password
+    """
     def __init__(self, data_path: str, password: str):
         self._path = data_path  # Set data path
         self._key = self.__derive_key(password)  # Get the encryption key using password
         self._data = self.__read()  # Read the JSON file from data path using new encryption key
         # Kill and exit handlers
-        signal(SIGINT, self.__write), signal(SIGTERM, self.__write)
+        init_kill_handlers(lambda *_: self.__write())
         exit_register(self.__write)
 
     @staticmethod
@@ -33,17 +46,35 @@ class Manager:
                          iterations=480000)
         return urlsafe_b64encode(kdf.derive(password.encode()))
 
+    def change_password(self, password: str):
+        """
+            Change the password of the manager.
+
+            :param password: :class:`str` New password
+        """
+        self._key = self.__derive_key(password)  # Get the encryption key using password
+
     def __read(self) -> dict:
         try:
             with gzip_open(self._path, 'rb') as f:
                 # InvalidToken will be raised here
                 return json_loads(Fernet(self._key).decrypt(urlsafe_b64encode(f.read())))
-        except FileNotFoundError:  # Create new data file
+        except FileNotFoundError:  # Return empty data dict
             return {}
 
     def __write(self):
         with gzip_open(self._path, 'wb', 9) as f:
             f.write(urlsafe_b64decode(Fernet(self._key).encrypt(json_dumps(self._data).encode())))
+
+    def sort_services(self, z_a: bool = False) -> dict:
+        """
+            Returns an alphabetically sorted
+            data dictionary.
+
+            :param z_a: :class:`bool` ``False`` for **A-Z**, ``True`` for **Z-A**; `default=False`
+            :returns: :class:`dict` Sorted data
+        """
+        return {k: self._data[k] for k in sorted(self._data, reverse=z_a)}
 
     # Service methods
     def add_service(self, name: str, data: dict = {}):
@@ -143,3 +174,16 @@ class Manager:
              :param username: :class:`str` Account username; `case-sensitive`
         """
         del self._data[service][username]
+
+
+class GUI(ctk.CTk):
+    WIDTH, HEIGHT = 450, 575
+
+    def __init__(self):
+        super().__init__(fg_color='#FBFBFB')
+        self.title("Timesheet"), self.iconbitmap(f'{PATH}favicon.ico')  # Favicon
+        # Dimensions + disable ability to resize
+        self.geometry(f"{self.WIDTH}x{self.HEIGHT}"), self.resizable(False, False)
+        init_kill_handlers(lambda *_: self.quit())  # GUI kill handlers
+        #
+        self.mainloop()
