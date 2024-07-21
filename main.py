@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 2/07/2024
+    - Jensen Trillo, Version pre-1.0, 22/07/2024
 
     - ``Python 3.11.6``
 
@@ -16,7 +16,14 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from gzip import open as gzip_open
 from atexit import register as exit_register
 from misc_utils import init_kill_handlers, resource_path
+from tkinter_utils import load_fonts
+from abc import abstractmethod
+__version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
+# Font consts (to make usages smaller)
+JB = 'JetBrains Mono NL'
+JBB = 'JetBrains Mono NL Bold'
+load_fonts((f'{PATH}JetBrainsMonoNL-Regular.ttf', f'{PATH}JetBrainsMonoNL-Bold.ttf'))
 
 
 class Manager:
@@ -179,11 +186,51 @@ class Manager:
 class GUI(ctk.CTk):
     WIDTH, HEIGHT = 450, 575
 
+    class Footer(ctk.CTkFrame):
+        def __init__(self, master):
+            super().__init__(master, GUI.WIDTH, 40, 0, fg_color='#B8B7B7')
+            # Grid weight for column 1 is so sticky works for the version label
+            self.grid_propagate(False), self.grid_anchor("w"), self.grid_columnconfigure(1, weight=1)
+            (ctk.CTkLabel(self, text='Copyright © 2024 Jensen Trillo', font=(JB, 13),
+                          text_color='#282828').grid(row=0, column=0, padx=(15, 0)))
+            (ctk.CTkLabel(self, text=f'Version {__version__}', font=(JB, 13), text_color='#282828')
+             .grid(row=0, column=1, sticky='e', padx=(0, 15)))
+
     def __init__(self):
+        # SCREENS
+        # +=====+
+        class Screen(ctk.CTkFrame):  # Base Class
+            @abstractmethod
+            def __init__(self, master):
+                super().__init__(master, GUI.WIDTH, GUI.HEIGHT, 0, fg_color='#FBFBFB')
+                GUI.Footer(self).place(x=0, y=GUI.HEIGHT - 40)  # Footer
+
+        class MainScreen(Screen):
+            def __init__(self, master):
+                super().__init__(master)
+
+        class LoginScreen(Screen):
+            def __init__(self, master):
+                super().__init__(master)
+
         super().__init__(fg_color='#FBFBFB')
-        self.title("Timesheet"), self.iconbitmap(f'{PATH}favicon.ico')  # Favicon
+        self.title("Timesheet"),  # self.iconbitmap(f'{PATH}favicon.ico')  # Favicon
         # Dimensions + disable ability to resize
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}"), self.resizable(False, False)
         init_kill_handlers(lambda *_: self.quit())  # GUI kill handlers
+        self.current_screen = MainScreen(self)
+        self.current_screen.place(x=0, y=0)
         #
         self.mainloop()
+
+    def switch_screen(self, new: ctk.CTkFrame):
+        def c():
+            new.tkraise()  # Makes it smoother
+            self.current_screen.destroy()
+            self.current_screen = new
+        new.place(x=0, y=0)  # Has to be place(), else flicker will occur
+        self.current_screen.tkraise(), self.after(10, c)  # 10ms to stop flicker
+
+
+if __name__ == '__main__':
+    GUI()
