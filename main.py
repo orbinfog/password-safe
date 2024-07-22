@@ -210,15 +210,34 @@ class GUI(ctk.CTk):
                 super().__init__(master)
 
         class LoginScreen(Screen):
+            class Content(ctk.CTkFrame):  # Separate frame to keep it vertically centered
+                def __init__(self, master):
+                    def validate(action, text) -> bool:  # Validate command
+                        if int(action):  # Insert
+                            pass
+                        else:  # Backspace/deletion
+                            return True
+
+                    super().__init__(master, fg_color='transparent')
+                    ctk.CTkLabel(self, text='Enter your password', font=(JB, 16), text_color='#000000').grid(
+                        row=0, column=0, columnspan=2, sticky='w')  # Label
+                    # Password Entry
+                    self.password = ctk.CTkEntry(self, 300, 80, 0, 2, 'transparent', '#E4E4E4', '#B8B7B7', '#000000',
+                                                 validate='key', validatecommand=(self.register(validate), '%d', '%P'))
+                    self.password.grid(row=1, column=0)
+                    ctk.CTkButton(self, 50, 80, 0, fg_color='#55BB33', text='', hover_color='#58C634').grid(
+                        row=1, column=1)
+
             def __init__(self, master):
-                super().__init__(master)
+                super().__init__(master), self.grid_propagate(False), self.grid_anchor('c')
+                self.Content(self).grid(pady=(0, 106))
 
         super().__init__(fg_color='#FBFBFB')
         self.title("Timesheet"),  # self.iconbitmap(f'{PATH}favicon.ico')  # Favicon
         # Dimensions + disable ability to resize
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}"), self.resizable(False, False)
         init_kill_handlers(lambda *_: self.quit())  # GUI kill handlers
-        self.current_screen = MainScreen(self)
+        self.current_screen = LoginScreen(self)
         self.current_screen.place(x=0, y=0)
         #
         self.mainloop()
