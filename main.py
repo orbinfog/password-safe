@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 22/07/2024
+    - Jensen Trillo, Version pre-1.0, 23/07/2024
 
     - ``Python 3.11.6``
 
