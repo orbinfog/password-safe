@@ -16,10 +16,14 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from gzip import open as gzip_open
 from atexit import register as exit_register
 from misc_utils import init_kill_handlers, resource_path
-from tkinter_utils import load_fonts
+from tkinter_utils import load_fonts, set_opacity
 from abc import abstractmethod
+from PIL import Image
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
+DATA_PATH = 'data.json'
+MAX_PASS_LENGTH = 16
+TRANS = '#feffff'  # Transparent color hex
 # Font consts (to make usages smaller)
 JB = 'JetBrains Mono NL'
 JBB = 'JetBrains Mono NL Bold'
@@ -197,13 +201,24 @@ class GUI(ctk.CTk):
              .grid(row=0, column=1, sticky='e', padx=(0, 15)))
 
     def __init__(self):
+        # Local functions
+        def switch_screen(new: ctk.CTkFrame):
+            def c():
+                new.tkraise()  # Makes it smoother
+                self.current_screen.destroy()
+                self.current_screen = new
+
+            new.place(x=0, y=0)  # Has to be place(), else flicker will occur
+            self.current_screen.tkraise(), self.after(10, c)  # 10ms to stop flicker
+
         # SCREENS
         # +=====+
         class Screen(ctk.CTkFrame):  # Base Class
             @abstractmethod
             def __init__(self, master):
                 super().__init__(master, GUI.WIDTH, GUI.HEIGHT, 0, fg_color='#FBFBFB')
-                GUI.Footer(self).place(x=0, y=GUI.HEIGHT - 40)  # Footer
+                self.footer = GUI.Footer(self)
+                self.footer.place(x=0, y=GUI.HEIGHT - 40)  # Footer
 
         class MainScreen(Screen):
             def __init__(self, master):
@@ -211,44 +226,63 @@ class GUI(ctk.CTk):
 
         class LoginScreen(Screen):
             class Content(ctk.CTkFrame):  # Separate frame to keep it vertically centered
-                def __init__(self, master):
-                    def validate(action, text) -> bool:  # Validate command
+                # self is cnt_self here so that check_password() can access parent self (CTk window)
+                def __init__(cnt_self, master, new: bool):
+                    def validate(action, text: str) -> bool:  # Validate command
                         if int(action):  # Insert
-                            pass
+                            try:
+                                text.encode('ascii')  # Raise EncodeError if Unicode
+                                # Below maximum password length and does not include spaces
+                                if len(text) <= MAX_PASS_LENGTH and ' ' not in text:
+                                    return True
+                                else:
+                                    return False
+                            except UnicodeEncodeError:
+                                return False
                         else:  # Backspace/deletion
                             return True
 
-                    super().__init__(master, fg_color='transparent')
-                    ctk.CTkLabel(self, text='Enter your password', font=(JB, 16), text_color='#000000').grid(
-                        row=0, column=0, columnspan=2, sticky='w')  # Label
-                    # Password Entry
-                    self.password = ctk.CTkEntry(self, 300, 80, 0, 2, 'transparent', '#E4E4E4', '#B8B7B7', '#000000',
-                                                 validate='key', validatecommand=(self.register(validate), '%d', '%P'))
-                    self.password.grid(row=1, column=0)
-                    ctk.CTkButton(self, 50, 80, 0, fg_color='#55BB33', text='', hover_color='#58C634').grid(
-                        row=1, column=1)
+                    def check_password(*_):  # Instantiate Manager class
+                        pass
+                        # switch_screen(MainScreen(self))
 
-            def __init__(self, master):
+                    super().__init__(master, fg_color='transparent')
+                    label = ctk.CTkLabel(cnt_self, text=f"{'Create' if new else 'Enter'} your password", font=(JB, 16),
+                                         text_color='#000000', fg_color=TRANS)
+                    set_opacity(label, color=TRANS), label.grid(row=0, column=0, columnspan=2, sticky='w')
+                    # Password Entry
+                    cnt_self.password = ctk.CTkEntry(cnt_self, 300, 80, 0, 2, 'transparent', '#E4E4E4', '#B8B7B7',
+                                                     '#000000', font=(JB, 28), show='*', validate='key',
+                                                     validatecommand=(cnt_self.register(validate), '%d', '%P'))
+                    cnt_self.password.bind('<Control-KeyPress-BackSpace>', lambda _: cnt_self.password.delete(0, 'end'))
+                    cnt_self.password.bind('<Enter>', check_password)
+                    cnt_self.password.grid(row=1, column=0)
+                    ctk.CTkButton(cnt_self, 50, 80, 0, fg_color='#55BB33', text='', hover_color='#58C634',
+                                  command=check_password, image=ctk.CTkImage(Image.open(f'{PATH}chev_right.png'),
+                                                                             size=(42, 42))).grid(row=1, column=1)
+
+            def __init__(self, master, new: bool):
                 super().__init__(master), self.grid_propagate(False), self.grid_anchor('c')
-                self.Content(self).grid(pady=(0, 106))
+                ctk.CTkLabel(self, text='', image=ctk.CTkImage(Image.open(f'{PATH}stripes.png'),
+                                                               size=(GUI.WIDTH, GUI.HEIGHT))).pack()
+                self.footer.tkraise()  # Footer above stripes background image
+                self.Content(self, new).grid(pady=(0, 106))
+                if new:  # Label for first time startup warning user to remember password
+                    warning = ctk.CTkLabel(self, text="WARNING: Your password cannot be reset if you forget it. This "
+                                                      "could lead to permanent data loss! Ensure you keep record of "
+                                                      "your password.", font=(JB, 13), width=300, wraplength=300,
+                                           justify='left', fg_color=TRANS, text_color='#CC0202')
+                    set_opacity(warning, color=TRANS), warning.place(x=40, y=295)
 
         super().__init__(fg_color='#FBFBFB')
         self.title("Timesheet"),  # self.iconbitmap(f'{PATH}favicon.ico')  # Favicon
         # Dimensions + disable ability to resize
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}"), self.resizable(False, False)
         init_kill_handlers(lambda *_: self.quit())  # GUI kill handlers
-        self.current_screen = LoginScreen(self)
+        self.current_screen = LoginScreen(self, True)
         self.current_screen.place(x=0, y=0)
         #
         self.mainloop()
-
-    def switch_screen(self, new: ctk.CTkFrame):
-        def c():
-            new.tkraise()  # Makes it smoother
-            self.current_screen.destroy()
-            self.current_screen = new
-        new.place(x=0, y=0)  # Has to be place(), else flicker will occur
-        self.current_screen.tkraise(), self.after(10, c)  # 10ms to stop flicker
 
 
 if __name__ == '__main__':
