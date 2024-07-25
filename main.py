@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 23/07/2024
+    - Jensen Trillo, Version pre-1.0, 26/07/2024
 
     - ``Python 3.11.6``
 
@@ -233,10 +233,7 @@ class GUI(ctk.CTk):
                             try:
                                 text.encode('ascii')  # Raise EncodeError if Unicode
                                 # Below maximum password length and does not include spaces
-                                if len(text) <= MAX_PASS_LENGTH and ' ' not in text:
-                                    return True
-                                else:
-                                    return False
+                                return len(text) <= MAX_PASS_LENGTH and ' ' not in text
                             except UnicodeEncodeError:
                                 return False
                         else:  # Backspace/deletion
