@@ -17,11 +17,13 @@ from gzip import open as gzip_open
 from atexit import register as exit_register
 from misc_utils import init_kill_handlers, resource_path
 from tkinter_utils import load_fonts, set_opacity
+from os import path as os_path
 from abc import abstractmethod
 from PIL import Image
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
 DATA_PATH = 'data.json'
+MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
 TRANS = '#feffff'  # Transparent color hex
 # Font consts (to make usages smaller)
@@ -240,8 +242,23 @@ class GUI(ctk.CTk):
                             return True
 
                     def check_password(*_):  # Instantiate Manager class
-                        pass
-                        # switch_screen(MainScreen(self))
+                        def error():
+                            cnt_self.password.configure(border_color='#ff3333')
+                            cnt_self.button.configure(fg_color='#ff3333', state='disabled')
+
+                        if len(entry := cnt_self.password.get()) < MIN_PASS_LENGTH:
+                            error()
+                            return
+                        if new:  # Skip checking as this is the creation of the password
+                            self.manager = Manager(DATA_PATH, entry)
+                        else:  # Not new - login
+                            try:
+                                self.manager = Manager(DATA_PATH, entry)
+                            except InvalidToken:
+                                error()
+                                return  # Return before reaching switch_screen
+                        # Successful
+                        switch_screen(MainScreen(self))
 
                     super().__init__(master, fg_color='transparent')
                     label = ctk.CTkLabel(cnt_self, text=f"{'Create' if new else 'Enter'} your password", font=(JB, 16),
@@ -252,31 +269,42 @@ class GUI(ctk.CTk):
                                                      '#000000', font=(JB, 28), show='*', validate='key',
                                                      validatecommand=(cnt_self.register(validate), '%d', '%P'))
                     cnt_self.password.bind('<Control-KeyPress-BackSpace>', lambda _: cnt_self.password.delete(0, 'end'))
-                    cnt_self.password.bind('<Enter>', check_password)
+                    cnt_self.password.bind('<KeyRelease-Return>', check_password)
+                    cnt_self.password.bind('<KeyRelease>', lambda _: (
+                        cnt_self.password.configure(border_color='#B8B7B7'),
+                        cnt_self.button.configure(fg_color='#55BB33', state='normal')
+                    ))
                     cnt_self.password.grid(row=1, column=0)
-                    ctk.CTkButton(cnt_self, 50, 80, 0, fg_color='#55BB33', text='', hover_color='#58C634',
-                                  command=check_password, image=ctk.CTkImage(Image.open(f'{PATH}chev_right.png'),
-                                                                             size=(42, 42))).grid(row=1, column=1)
+                    cnt_self.button = ctk.CTkButton(cnt_self, 50, 80, 0, fg_color='#55BB33', text='',
+                                                    hover_color='#58C634', command=check_password,
+                                                    image=ctk.CTkImage(Image.open(f'{PATH}chev_right.png'),
+                                                                       size=(42, 42)))
+                    cnt_self.button.grid(row=1, column=1)
 
-            def __init__(self, master, new: bool):
+            def __init__(self, master):
                 super().__init__(master), self.grid_propagate(False), self.grid_anchor('c')
                 ctk.CTkLabel(self, text='', image=ctk.CTkImage(Image.open(f'{PATH}stripes.png'),
                                                                size=(GUI.WIDTH, GUI.HEIGHT))).pack()
                 self.footer.tkraise()  # Footer above stripes background image
-                self.Content(self, new).grid(pady=(0, 106))
+                # If path exists, it is not new, else it is
+                self.Content(self, new := not os_path.exists(DATA_PATH)).grid(pady=(0, 106))
                 if new:  # Label for first time startup warning user to remember password
+                    length = ctk.CTkLabel(self, text=f'The password must be between {MIN_PASS_LENGTH} and '
+                                                     f'{MAX_PASS_LENGTH} characters.', font=(JB, 12), fg_color=TRANS)
                     warning = ctk.CTkLabel(self, text="WARNING: Your password cannot be reset if you forget it. This "
                                                       "could lead to permanent data loss! Ensure you keep record of "
-                                                      "your password.", font=(JB, 13), width=300, wraplength=300,
+                                                      "your password.", font=(JB, 12), wraplength=350,
                                            justify='left', fg_color=TRANS, text_color='#CC0202')
-                    set_opacity(warning, color=TRANS), warning.place(x=40, y=295)
+                    set_opacity(length, color=TRANS), length.place(x=50, y=290)
+                    set_opacity(warning, color=TRANS), warning.place(x=50, y=315)
 
         super().__init__(fg_color='#FBFBFB')
-        self.title("Timesheet"),  # self.iconbitmap(f'{PATH}favicon.ico')  # Favicon
+        # ctk.set_appearance_mode("dark")
+        self.title("Password Safe"), self.iconbitmap(f'{PATH}favicon.ico')  # Favicon
         # Dimensions + disable ability to resize
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}"), self.resizable(False, False)
         init_kill_handlers(lambda *_: self.quit())  # GUI kill handlers
-        self.current_screen = LoginScreen(self, True)
+        self.current_screen = LoginScreen(self)
         self.current_screen.place(x=0, y=0)
         #
         self.mainloop()
