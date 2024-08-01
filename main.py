@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 26/07/2024
+    - Jensen Trillo, Version pre-1.0, 1/08/2024
 
     - ``Python 3.11.6``
 
@@ -90,6 +90,7 @@ class Manager:
         return {k: self._data[k] for k in sorted(self._data, reverse=z_a)}
 
     # Service methods
+    # noinspection PyDefaultArgument
     def add_service(self, name: str, data: dict = {}):
         """
             Adds a service; the name is case-sensitive. If
@@ -223,12 +224,65 @@ class GUI(ctk.CTk):
                 self.footer.place(x=0, y=GUI.HEIGHT - 40)  # Footer
 
         class MainScreen(Screen):
+            class ChangePassword(ctk.CTkFrame):
+                def __init__(self, master):
+                    super().__init__(master, GUI.WIDTH, 40, 0, fg_color='#E4E3E3')
+
+            class Accounts(ctk.CTkScrollableFrame):
+                def __init__(self, master):
+                    super().__init__(master, 390, 350, 0)
+
+            class Search(ctk.CTkFrame):
+                def __init__(self, master):
+                    super().__init__(master, 185, 35, 5, 2, fg_color='transparent',
+                                     border_color='#000000')
+                    # Search icon
+                    img = ctk.CTkLabel(self, 35, 35, 0, fg_color='#000000', bg_color=TRANS,
+                                  text='', compound='left', image=ctk.CTkImage(Image.open(f'{PATH}search.png'), size=(20, 20)))
+                    set_opacity(img, color=TRANS), img.place(x=2, y=0)  # Remove BG and place
+                    # Entry box for query
+                    self.query = ctk.CTkEntry(self, 147, 30, 0, 0, fg_color='transparent',
+                                              text_color='#212121', font=(JB, 16))
+                    self.query.place(x=35, y=2)
+
+            class AddAccount(ctk.CTkFrame):
+                def __add(self, _):
+                    print('hi')
+
+                def __init__(self, master):
+                    # Label and button with the text being '+' doesn't work as the plus exceeds the 35x35px dimensions
+                    # Because of this, a frame with the image on top is used, which means the frame and label img
+                    # both need mouse bindings
+                    super().__init__(master, 35, 35, 12, fg_color='#55BB33', cursor='hand2')
+                    self.grid_propagate(False), self.grid_anchor('center')
+                    plus = ctk.CTkLabel(self, text='+', text_color='#FFFFFF', font=(JBB, 32), fg_color=TRANS, bg_color=TRANS)
+                    set_opacity(plus, color=TRANS), plus.grid(padx=(0, 1), pady=(0, 2))
+                    for o in {self, plus}:
+                        # Hover colours
+                        o.bind('<Enter>', lambda _: self.configure(fg_color='#5BCA37'))  # Hover over
+                        o.bind('<Leave>', lambda _: self.configure(fg_color='#55BB33'))  # Exit
+                        o.bind('<Button-1>', self.__add)
+
             def __init__(self, master):
-                super().__init__(master)
+                super().__init__(master), self.grid_propagate(False), self.grid_anchor('n')
+                ctk.CTkLabel(self, text='Your services', text_color='#000000', font=(JB, 24)).grid(
+                    row=0, column=0, columnspan=3, sticky='w', pady=(30, 2))  # Services header text
+                #
+                # SECOND ROW BUTTONS
+                self.Search(self).grid(row=1, column=0, sticky='w', padx=(0, 100))
+                # Sorting button
+                ctk.CTkButton(self, 75, 35, 5, 2, fg_color='transparent', border_color='#000000',
+                              hover_color='#FFFFFF', text='A-Z', text_color='#000000', font=(JBB, 20),
+                              image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10))).grid(row=1, column=1, sticky='e')
+                self.AddAccount(self).grid(row=1, column=2, sticky='e')  # Add account button
+                # --
+                self.Accounts(self).grid(row=2, column=0, columnspan=3, pady=(10, 0))
+                self.ChangePassword(self).place(x=0, y=GUI.HEIGHT - 80)
 
         class LoginScreen(Screen):
             class Content(ctk.CTkFrame):  # Separate frame to keep it vertically centered
                 # self is cnt_self here so that check_password() can access parent self (CTk window)
+                # noinspection PyMethodParameters
                 def __init__(cnt_self, master, new: bool):
                     def validate(action, text: str) -> bool:  # Validate command
                         if int(action):  # Insert
@@ -270,10 +324,11 @@ class GUI(ctk.CTk):
                                                      validatecommand=(cnt_self.register(validate), '%d', '%P'))
                     cnt_self.password.bind('<Control-KeyPress-BackSpace>', lambda _: cnt_self.password.delete(0, 'end'))
                     cnt_self.password.bind('<KeyRelease-Return>', check_password)
-                    cnt_self.password.bind('<KeyRelease>', lambda _: (
+                    cnt_self.password.bind('<KeyRelease>', lambda e: (
                         cnt_self.password.configure(border_color='#B8B7B7'),
                         cnt_self.button.configure(fg_color='#55BB33', state='normal')
-                    ))
+                    # If the event character is valid, and above 0 characters, reset to normal colours
+                    ) if len(cnt_self.password.get()) > 0 and validate(1, e.char) else None)
                     cnt_self.password.grid(row=1, column=0)
                     cnt_self.button = ctk.CTkButton(cnt_self, 50, 80, 0, fg_color='#55BB33', text='',
                                                     hover_color='#58C634', command=check_password,
@@ -282,7 +337,7 @@ class GUI(ctk.CTk):
                     cnt_self.button.grid(row=1, column=1)
 
             def __init__(self, master):
-                super().__init__(master), self.grid_propagate(False), self.grid_anchor('c')
+                super().__init__(master), self.grid_propagate(False), self.grid_anchor('center')
                 ctk.CTkLabel(self, text='', image=ctk.CTkImage(Image.open(f'{PATH}stripes.png'),
                                                                size=(GUI.WIDTH, GUI.HEIGHT))).pack()
                 self.footer.tkraise()  # Footer above stripes background image
@@ -290,7 +345,8 @@ class GUI(ctk.CTk):
                 self.Content(self, new := not os_path.exists(DATA_PATH)).grid(pady=(0, 106))
                 if new:  # Label for first time startup warning user to remember password
                     length = ctk.CTkLabel(self, text=f'The password must be between {MIN_PASS_LENGTH} and '
-                                                     f'{MAX_PASS_LENGTH} characters.', font=(JB, 12), fg_color=TRANS)
+                                                     f'{MAX_PASS_LENGTH} characters.', font=(JB, 12), text_color='#000000',
+                                          fg_color=TRANS)
                     warning = ctk.CTkLabel(self, text="WARNING: Your password cannot be reset if you forget it. This "
                                                       "could lead to permanent data loss! Ensure you keep record of "
                                                       "your password.", font=(JB, 12), wraplength=350,
