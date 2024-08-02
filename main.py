@@ -205,6 +205,17 @@ class GUI(ctk.CTk):
 
     def __init__(self):
         # Local functions
+        def validate(action, text: str) -> bool:  # Validate password command
+            if int(action):  # Insert
+                try:
+                    text.encode('ascii')  # Raise EncodeError if Unicode
+                    # Below maximum password length and does not include spaces
+                    return len(text) <= MAX_PASS_LENGTH and ' ' not in text
+                except UnicodeEncodeError:
+                    return False
+            else:  # Backspace/deletion
+                return True
+
         def switch_screen(new: ctk.CTkFrame):
             def c():
                 new.tkraise()  # Makes it smoother
@@ -227,6 +238,18 @@ class GUI(ctk.CTk):
             class ChangePassword(ctk.CTkFrame):
                 def __init__(self, master):
                     super().__init__(master, GUI.WIDTH, 40, 0, fg_color='#E4E3E3')
+                    self.grid_propagate(False), self.grid_anchor('center')
+                    #
+                    ctk.CTkLabel(self, text='Change the master password:', text_color='#4D4D4D', font=(JB, 12)).grid(
+                        row=0, column=0, padx=(0, 8))
+                    new = ctk.CTkEntry(self, 145, 16, 5, 1, fg_color='transparent', text_color='#403E3E',
+                                       border_color='#4D4D4D', font=(JB, 14), show='*', validate='key',
+                                       validatecommand=(self.register(validate), '%d', '%P'))
+                    new.grid(row=0, column=1, pady=(2, 0))
+                    # Checkmark - confirm button
+                    confirm = ctk.CTkButton(self, 16, 16, text='', fg_color='transparent', hover_color='#E4E3E3',
+                                            image=ctk.CTkImage(Image.open(f'{PATH}checkmark.png'), size=(16, 16)))
+                    confirm.grid(row=0, column=2, padx=(1, 0))
 
             class Accounts(ctk.CTkScrollableFrame):
                 def __init__(self, master):
@@ -247,7 +270,7 @@ class GUI(ctk.CTk):
 
             class AddAccount(ctk.CTkFrame):
                 def __add(self, _):
-                    print('hi')
+                    pass
 
                 def __init__(self, master):
                     # Label and button with the text being '+' doesn't work as the plus exceeds the 35x35px dimensions
@@ -255,7 +278,8 @@ class GUI(ctk.CTk):
                     # both need mouse bindings
                     super().__init__(master, 35, 35, 12, fg_color='#55BB33', cursor='hand2')
                     self.grid_propagate(False), self.grid_anchor('center')
-                    plus = ctk.CTkLabel(self, text='+', text_color='#FFFFFF', font=(JBB, 32), fg_color=TRANS, bg_color=TRANS)
+                    plus = ctk.CTkLabel(self, text='+', text_color='#FFFFFF', font=(JBB, 32), fg_color=TRANS,
+                                        bg_color=TRANS)
                     set_opacity(plus, color=TRANS), plus.grid(padx=(0, 1), pady=(0, 2))
                     for o in {self, plus}:
                         # Hover colours
@@ -273,7 +297,8 @@ class GUI(ctk.CTk):
                 # Sorting button
                 ctk.CTkButton(self, 75, 35, 5, 2, fg_color='transparent', border_color='#000000',
                               hover_color='#FFFFFF', text='A-Z', text_color='#000000', font=(JBB, 20),
-                              image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10))).grid(row=1, column=1, sticky='e')
+                              image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10))).grid(
+                    row=1, column=1, sticky='e')
                 self.AddAccount(self).grid(row=1, column=2, sticky='e')  # Add account button
                 # --
                 self.Accounts(self).grid(row=2, column=0, columnspan=3, pady=(10, 0))
@@ -284,17 +309,6 @@ class GUI(ctk.CTk):
                 # self is cnt_self here so that check_password() can access parent self (CTk window)
                 # noinspection PyMethodParameters
                 def __init__(cnt_self, master, new: bool):
-                    def validate(action, text: str) -> bool:  # Validate command
-                        if int(action):  # Insert
-                            try:
-                                text.encode('ascii')  # Raise EncodeError if Unicode
-                                # Below maximum password length and does not include spaces
-                                return len(text) <= MAX_PASS_LENGTH and ' ' not in text
-                            except UnicodeEncodeError:
-                                return False
-                        else:  # Backspace/deletion
-                            return True
-
                     def check_password(*_):  # Instantiate Manager class
                         def error():
                             cnt_self.password.configure(border_color='#ff3333')
@@ -327,7 +341,7 @@ class GUI(ctk.CTk):
                     cnt_self.password.bind('<KeyRelease>', lambda e: (
                         cnt_self.password.configure(border_color='#B8B7B7'),
                         cnt_self.button.configure(fg_color='#55BB33', state='normal')
-                    # If the event character is valid, and above 0 characters, reset to normal colours
+                        # If the event character is valid, and above 0 characters, reset to normal colours
                     ) if len(cnt_self.password.get()) > 0 and validate(1, e.char) else None)
                     cnt_self.password.grid(row=1, column=0)
                     cnt_self.button = ctk.CTkButton(cnt_self, 50, 80, 0, fg_color='#55BB33', text='',
