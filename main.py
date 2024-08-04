@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 2/08/2024
+    - Jensen Trillo, Version pre-1.0, 5/08/2024
 
     - ``Python 3.11.6``
 
@@ -245,58 +245,99 @@ class GUI(ctk.CTk):
                 self.footer.place(x=0, y=GUI.HEIGHT - 40)  # Footer
 
         class MainScreen(Screen):
-            class Accounts(ctk.CTkScrollableFrame):
-                def __init__(self, master):
-                    super().__init__(master, 390, 350, 0)
-
-            class Search(ctk.CTkFrame):  # Searchbar
-                def __init__(self, master):
-                    super().__init__(master, 185, 35, 5, 2, fg_color='transparent',
-                                     border_color='#000000')
-                    # Search icon
-                    img = ctk.CTkLabel(self, 35, 35, 0, fg_color='#000000', bg_color=TRANS,
-                                  text='', compound='left', image=ctk.CTkImage(Image.open(f'{PATH}search.png'), size=(20, 20)))
-                    set_opacity(img, color=TRANS), img.place(x=2, y=0)  # Remove BG and place
-                    # Entry box for query
-                    self.query = ctk.CTkEntry(self, 147, 30, 0, 0, fg_color='transparent',
-                                              text_color='#212121', font=(JB, 16))
-                    self.query.place(x=35, y=2)
-
-            class AddAccount(ctk.CTkFrame):
-                def __add(self, _):
-                    pass
-
-                def __init__(self, master):
-                    # Label and button with the text being '+' doesn't work as the plus exceeds the 35x35px dimensions
-                    # Because of this, a frame with the image on top is used, which means the frame and label img
-                    # both need mouse bindings
-                    super().__init__(master, 35, 35, 12, fg_color='#55BB33', cursor='hand2')
-                    self.grid_propagate(False), self.grid_anchor('center')
-                    plus = ctk.CTkLabel(self, text='+', text_color='#FFFFFF', font=(JBB, 32), fg_color=TRANS, bg_color=TRANS)
-                    set_opacity(plus, color=TRANS), plus.grid(padx=(0, 1), pady=(0, 2))
-                    for o in {self, plus}:
-                        # Hover colours
-                        o.bind('<Enter>', lambda _: self.configure(fg_color='#5BCA37'))  # Hover over
-                        o.bind('<Leave>', lambda _: self.configure(fg_color='#55BB33'))  # Exit
-                        o.bind('<Button-1>', self.__add)
-
             def __init__(self, master):
+                # Local Components
+                class Accounts(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
+                    class Account(ctk.CTkFrame):
+                        def __dropdown(self, _):  # Once clicked
+                            if self.dropdown:  # Collapse dropdown
+                                # Reset everything
+                                self.configure(height=45)
+                                self.label.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
+                            else:  # Make dropdown
+                                # Make the frames new height: (# of accounts * 82) + 70
+                                self.configure(height=(height := 115 + (len(self.accounts) * 82)))
+                                self.label.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
+                                # Add the delete service button
+                                ctk.CTkButton(self, 130, 12, fg_color='transparent', text='Delete service',
+                                              text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
+                                              image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12))
+                                              ).place(x=6, y=height - 32)
+                            # --
+                            self.dropdown = not self.dropdown
+
+                        def __init__(self, master, name: str):
+                            super().__init__(master, 390, 45, 10, fg_color='#EAEAEA', cursor='hand2')
+                            self.grid_propagate(False), self.grid_anchor('nw')
+                            self.dropdown, self.accounts = False, []
+                            # Chevron + Service name
+                            self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
+                            self.label = ctk.CTkLabel(self, padx=6, compound='left',
+                                                      image=ctk.CTkImage(self.img, size=(20, 20)),
+                                                      text=name, text_color='#3D3D3D', font=(JB, 20))
+                            # Bindings (apply to both frame and label)
+                            for o in {self, self.label}:
+                                # o.bind('<Enter>', lambda _: self.configure(fg_color='#E7E6E6'))
+                                # o.bind('<Leave>', lambda _: self.configure(fg_color='#EAEAEA'))
+                                o.bind('<Button-1>', self.__dropdown)
+                            #
+                            self.label.grid(row=0, column=0, padx=(4, 0), pady=(8, 0), sticky='w')
+                    
+                    def __init__(self, master):
+                        super().__init__(master, 390, 350, 0, fg_color='transparent')
+                        self.Account(self, 'test').grid(row=0, column=0)
+                        self.services = []
+
+                class Search(ctk.CTkFrame):  # Searchbar
+                    def __init__(self, master):
+                        super().__init__(master, 185, 35, 5, 2, fg_color='transparent',
+                                         border_color='#000000')
+                        # Search icon
+                        img = ctk.CTkLabel(self, 35, 35, 0, fg_color='#000000', bg_color=TRANS,
+                                           text='', compound='left',
+                                           image=ctk.CTkImage(Image.open(f'{PATH}search.png'), size=(20, 20)))
+                        set_opacity(img, color=TRANS), img.place(x=2, y=0)  # Remove BG and place
+                        # Entry box for query
+                        self.query = ctk.CTkEntry(self, 147, 30, 0, 0, fg_color='transparent',
+                                                  text_color='#212121', font=(JB, 16))
+                        self.query.place(x=35, y=2)
+
+                class AddAccount(ctk.CTkFrame):
+                    def __add(self, _):
+                        pass
+
+                    def __init__(self, master):
+                        # Label and button with the text being '+' doesn't work as the plus exceeds the 35x35px
+                        # dimensions. Because of this, a frame with the image on top is used, which means the frame
+                        # and label img both need mouse bindings
+                        super().__init__(master, 35, 35, 12, fg_color='#55BB33', cursor='hand2')
+                        self.grid_propagate(False), self.grid_anchor('center')
+                        plus = ctk.CTkLabel(self, text='+', text_color='#FFFFFF', font=(JBB, 32), fg_color=TRANS,
+                                            bg_color=TRANS)
+                        set_opacity(plus, color=TRANS), plus.grid(padx=(0, 1), pady=(0, 2))
+                        for o in {self, plus}:
+                            # Hover colours
+                            o.bind('<Enter>', lambda _: self.configure(fg_color='#5BCA37'))  # Hover over
+                            o.bind('<Leave>', lambda _: self.configure(fg_color='#55BB33'))  # Exit
+                            o.bind('<Button-1>', self.__add)
+
+                # ========================================================================
                 super().__init__(master), self.grid_propagate(False), self.grid_anchor('n')
                 ctk.CTkLabel(self, text='Your services', text_color='#000000', font=(JB, 24)).grid(
                     row=0, column=0, columnspan=3, sticky='w', pady=(30, 2))  # Services header text
                 #
                 # SECOND ROW BUTTONS
-                self.Search(self).grid(row=1, column=0, sticky='w', padx=(0, 100))
+                Search(self).grid(row=1, column=0, sticky='w', padx=(0, 100))
                 # Sorting button
                 ctk.CTkButton(self, 75, 35, 5, 2, fg_color='transparent', border_color='#000000',
                               hover_color='#FFFFFF', text='A-Z', text_color='#000000', font=(JBB, 20),
                               image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10))).grid(row=1, column=1, sticky='e')
-                self.AddAccount(self).grid(row=1, column=2, sticky='e')  # Add account button
+                AddAccount(self).grid(row=1, column=2, sticky='e')  # Add account button
                 # --
-                self.Accounts(self).grid(row=2, column=0, columnspan=3, pady=(10, 0))
+                Accounts(self).grid(row=2, column=0, columnspan=3, pady=(10, 0))
                 # Change Password footer button
                 ctk.CTkButton(self, GUI.WIDTH, 40, 0, text='Change the master password', font=(JB, 12),
-                              text_color='#343434', fg_color='#E4E3E3', hover_color='#DDDCDC',
+                              text_color='#343434', fg_color='#E4E3E3', hover_color='#d8d8d8',
                               # provide this MainScreen instance, so it can return to the same one upon change
                               command=lambda: switch_screen(LoginScreen(master, True, self), True),
                               image=ctk.CTkImage(Image.open(f'{PATH}edit.png'), size=(16, 16))).place(x=0, y=GUI.HEIGHT - 80)
@@ -355,7 +396,7 @@ class GUI(ctk.CTk):
                     c_self.password = ctk.CTkEntry(c_self, 300, 80, 0, 2, 'transparent', '#E4E4E4', '#B8B7B7',
                                                      '#000000', font=(JB, 28), show='*', validate='key',
                                                    validatecommand=(c_self.register(validate), '%d', '%P'))
-                    c_self.password.bind('<Control-KeyPress-BackSpace>', lambda e: (reset(e), 
+                    c_self.password.bind('<Control-KeyPress-BackSpace>', lambda e: (reset(e),
                                                                                     c_self.password.delete(0, 'end')))
                     c_self.password.bind('<KeyRelease-Return>', check_password)
                     c_self.password.bind('<KeyRelease>', reset)
