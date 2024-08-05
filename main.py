@@ -246,47 +246,51 @@ class GUI(ctk.CTk):
 
         class MainScreen(Screen):
             def __init__(self, master):
-                # Local Components
-                class Accounts(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
-                    class Account(ctk.CTkFrame):
-                        def __dropdown(self, _):  # Once clicked
-                            if self.dropdown:  # Collapse dropdown
-                                # Reset everything
-                                self.configure(height=45)
-                                self.label.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
-                            else:  # Make dropdown
-                                # Make the frames new height: (# of accounts * 82) + 70
-                                self.configure(height=(height := 115 + (len(self.accounts) * 82)))
-                                self.label.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
-                                # Add the delete service button
-                                ctk.CTkButton(self, 130, 12, fg_color='transparent', text='Delete service',
-                                              text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
-                                              image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12))
-                                              ).place(x=6, y=height - 32)
-                            # --
-                            self.dropdown = not self.dropdown
+                manager = master.manager  # So it can be accessed anywhere
 
+                # Local Components
+                class Services(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
+                    class Service(ctk.CTkFrame):
                         def __init__(self, master, name: str):
-                            super().__init__(master, 390, 45, 10, fg_color='#EAEAEA', cursor='hand2')
+                            def dropdown():  # Once clicked
+                                if self.dropdown:  # Collapse dropdown
+                                    # Reset everything
+                                    self.configure(height=45)
+                                    self.label.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
+                                else:  # Make dropdown
+                                    # Make the frames new height: (# of accounts * 82) + 70
+                                    self.configure(height=(height := 115 + (len(self.accounts) * 82)))
+                                    self.label.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
+                                    # Add the delete service button
+                                    ctk.CTkButton(self, 0, 12, fg_color='transparent', text='Delete service',
+                                                  text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
+                                                  image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
+                                                  command=lambda: manager.delete_service(name)
+                                                  ).place(x=6, y=height - 34)
+                                    # Add new account button
+                                    ctk.CTkButton(self, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
+                                                  text=f'Add{" another" if len(self.accounts) > 0 else ""} account',
+                                                  font=(JB, 14), hover_color="#5BCA37"
+                                                  ).grid(row=1, column=0, padx=45)
+                                # --
+                                self.dropdown = not self.dropdown
+
+                            super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
                             self.dropdown, self.accounts = False, []
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
-                            self.label = ctk.CTkLabel(self, padx=6, compound='left',
-                                                      image=ctk.CTkImage(self.img, size=(20, 20)),
-                                                      text=name, text_color='#3D3D3D', font=(JB, 20))
-                            # Bindings (apply to both frame and label)
-                            for o in {self, self.label}:
-                                # o.bind('<Enter>', lambda _: self.configure(fg_color='#E7E6E6'))
-                                # o.bind('<Leave>', lambda _: self.configure(fg_color='#EAEAEA'))
-                                o.bind('<Button-1>', self.__dropdown)
+                            self.label = ctk.CTkButton(self, 0, 20, anchor='w', fg_color='#EAEAEA',
+                                                       hover_color="#EAEAEA", text=name, text_color='#3D3D3D',
+                                                       font=(JB, 20), image=ctk.CTkImage(self.img, size=(20, 20)),
+                                                       command=dropdown)
                             #
-                            self.label.grid(row=0, column=0, padx=(4, 0), pady=(8, 0), sticky='w')
-                    
+                            self.label.grid(row=0, column=0, padx=(4, 0), pady=(6, 0), sticky='w')
+
                     def __init__(self, master):
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
-                        self.Account(self, 'test').grid(row=0, column=0)
                         self.services = []
+                        self.Service(self, 'test').grid(row=0, column=0)
 
                 class Search(ctk.CTkFrame):  # Searchbar
                     def __init__(self, master):
@@ -302,7 +306,7 @@ class GUI(ctk.CTk):
                                                   text_color='#212121', font=(JB, 16))
                         self.query.place(x=35, y=2)
 
-                class AddAccount(ctk.CTkFrame):
+                class AddService(ctk.CTkFrame):
                     def __add(self, _):
                         pass
 
@@ -332,9 +336,9 @@ class GUI(ctk.CTk):
                 ctk.CTkButton(self, 75, 35, 5, 2, fg_color='transparent', border_color='#000000',
                               hover_color='#FFFFFF', text='A-Z', text_color='#000000', font=(JBB, 20),
                               image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10))).grid(row=1, column=1, sticky='e')
-                AddAccount(self).grid(row=1, column=2, sticky='e')  # Add account button
+                AddService(self).grid(row=1, column=2, sticky='e')  # Add account button
                 # --
-                Accounts(self).grid(row=2, column=0, columnspan=3, pady=(10, 0))
+                Services(self).grid(row=2, column=0, columnspan=3, pady=(10, 0))
                 # Change Password footer button
                 ctk.CTkButton(self, GUI.WIDTH, 40, 0, text='Change the master password', font=(JB, 12),
                               text_color='#343434', fg_color='#E4E3E3', hover_color='#d8d8d8',
