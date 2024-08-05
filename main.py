@@ -25,6 +25,7 @@ PATH = resource_path('assets/')  # Absolute asset path for files/resources
 DATA_PATH = 'data.json'
 MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
+MAX_SERVICE_LENGTH = 12
 TRANS = '#feffff'  # Transparent color hex
 # Font consts (to make usages smaller)
 JB = 'JetBrains Mono NL'
@@ -251,8 +252,15 @@ class GUI(ctk.CTk):
                 # Local Components
                 class Services(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
                     class Service(ctk.CTkFrame):
-                        def __init__(self, master, name: str):
+                        def __init__(self, master, accounts: dict, name: str = None):
                             def dropdown():  # Once clicked
+                                def deletion_confirmation():
+                                    if not self.delete_step:
+                                        delete.configure(border_width=1, text='Confirm deletion')
+                                        self.delete_step = 1
+                                    else:
+                                        manager.delete_service(self.name)
+
                                 if self.dropdown:  # Collapse dropdown
                                     # Reset everything
                                     self.configure(height=45)
@@ -262,34 +270,70 @@ class GUI(ctk.CTk):
                                     self.configure(height=(height := 115 + (len(self.accounts) * 82)))
                                     self.button.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
                                     # Add the delete service button
-                                    ctk.CTkButton(self, 0, 12, fg_color='transparent', text='Delete service',
+                                    self.delete_step = 0
+                                    delete = ctk.CTkButton(self, 0, 12, 5, 0, fg_color='transparent', text='Delete service',
                                                   text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
                                                   image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
-                                                  command=lambda: manager.delete_service(name)
-                                                  ).place(x=6, y=height - 34)
+                                                  command=deletion_confirmation, border_color='#CC0202'
+                                                  )
+                                    def w(_):  # Wrapper for resetting deletion step upon hovering off
+                                        delete.configure(border_width=0, text='Delete service')
+                                        self.delete_step = 0
+                                    delete.bind('<Leave>', w), delete.place(x=8, y=height - 34)
                                     # Add new account button
                                     ctk.CTkButton(self, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
                                                   text=f'Add{" another" if len(self.accounts) > 0 else ""} account',
                                                   font=(JB, 14), hover_color="#5BCA37"
-                                                  ).grid(row=1, column=0, padx=45)
+                                                  ).grid(row=1, column=0, padx=45, pady=(45, 0))
                                 # --
                                 self.dropdown = not self.dropdown
 
                             super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
-                            self.dropdown, self.accounts = False, []
+                            self.dropdown, self.accounts = False, accounts
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
-                            self.button = ctk.CTkButton(self, 0, 20, anchor='w', fg_color='#EAEAEA',
-                                                        hover_color="#EAEAEA", text=name, text_color='#3D3D3D',
-                                                        font=(JB, 20), image=ctk.CTkImage(self.img, size=(20, 20)),
+                            self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
+                                                        hover_color="#EAEAEA", text='', image=ctk.CTkImage(self.img, size=(20, 20)),
                                                         command=dropdown)
-                            self.button.grid(row=0, column=0, padx=(4, 0), pady=(6, 0), sticky='w')
+                            self.label = ctk.CTkEntry(self, 350, 20, 0, 0, text_color='#3D3D3D', font=(JB, 20),
+                                                     fg_color='transparent', validate='key',
+                                                     validatecommand=(self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
+                            self.label.bind('<Control-KeyPress-BackSpace>', lambda _: self.label.delete(0, 'end'))
+                            self.label.bind('<KeyRelease>', lambda _: self.label.configure(text_color='#3D3D3D'))
+                            self.name = name
+                            if name:  # Name is provided
+                                def rename(_):
+                                    if name != (new := self.label.get()):  # Different name
+                                        try:
+                                            manager.rename_service(name, new)
+                                            self.name = new
+                                        except ValueError:  # Conflicting
+                                            self.label.configure(text_color='#ff3333')
+                                            # ctk.CTkLabel(self, 150, 0, text='Conflicts with existing service', text_color='#eb2121',
+                                            #              font=(JB, 12), fg_color='transparent', wraplength=150,
+                                            #              justify='right').place(x=242, y=6)
+                                self.label.insert(0, name)
+                                self.label.bind('<KeyRelease-Return>', rename)
+                            else:  # Add new service
+                                def add(_):
+                                    try:
+                                        manager.add_service(new := self.label.get())
+                                        self.label.unbind('<KeyRelease-Return>', binding)
+                                        self.button.configure(state='normal')
+                                        self.name = new
+                                    except KeyError:  # Already exists
+                                        self.label.configure(text_color='#ff3333')
+                                self.button.configure(state='disabled')
+                                binding = self.label.bind('<KeyRelease-Return>', add)
+                            self.button.place(x=4, y=8), self.label.place(x=30, y=8)
 
                     def __init__(self, master):
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
-                        self.services = []
-                        self.Service(self, 'test').grid(row=0, column=0)
+                        self.services = manager.sort_services()
+                        self.service_objects = []
+                        for i, (service, accounts) in enumerate(self.services.items()):
+                            self.service_objects.append(self.Service(self, accounts, service).grid(row=i, column=0, pady=(0, 5)))
 
                 class Search(ctk.CTkFrame):  # Searchbar
                     def __init__(self, master):
