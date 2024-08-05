@@ -256,11 +256,11 @@ class GUI(ctk.CTk):
                                 if self.dropdown:  # Collapse dropdown
                                     # Reset everything
                                     self.configure(height=45)
-                                    self.label.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
+                                    self.button.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
                                 else:  # Make dropdown
                                     # Make the frames new height: (# of accounts * 82) + 70
                                     self.configure(height=(height := 115 + (len(self.accounts) * 82)))
-                                    self.label.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
+                                    self.button.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
                                     # Add the delete service button
                                     ctk.CTkButton(self, 0, 12, fg_color='transparent', text='Delete service',
                                                   text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
@@ -280,12 +280,11 @@ class GUI(ctk.CTk):
                             self.dropdown, self.accounts = False, []
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
-                            self.label = ctk.CTkButton(self, 0, 20, anchor='w', fg_color='#EAEAEA',
-                                                       hover_color="#EAEAEA", text=name, text_color='#3D3D3D',
-                                                       font=(JB, 20), image=ctk.CTkImage(self.img, size=(20, 20)),
-                                                       command=dropdown)
-                            #
-                            self.label.grid(row=0, column=0, padx=(4, 0), pady=(6, 0), sticky='w')
+                            self.button = ctk.CTkButton(self, 0, 20, anchor='w', fg_color='#EAEAEA',
+                                                        hover_color="#EAEAEA", text=name, text_color='#3D3D3D',
+                                                        font=(JB, 20), image=ctk.CTkImage(self.img, size=(20, 20)),
+                                                        command=dropdown)
+                            self.button.grid(row=0, column=0, padx=(4, 0), pady=(6, 0), sticky='w')
 
                     def __init__(self, master):
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
@@ -406,9 +405,10 @@ class GUI(ctk.CTk):
                     c_self.password.bind('<KeyRelease>', reset)
                     c_self.password.grid(row=1, column=0)
                     c_self.button = ctk.CTkButton(c_self, 50, 80, 0, fg_color='#55BB33', text='',
-                                                  hover_color='#58C634', command=check_password,
-                                                  image=ctk.CTkImage(Image.open(f'{PATH}{"edit" if change else "chev_right"}.png'),
-                                                                       size=(22, 22) if change else (42, 42)))
+                                                  hover_color='#5BCA37', command=check_password,
+                                                  image=ctk.CTkImage(Image.open(
+                                                      f'{PATH}{"edit" if change else "chev_right"}.png'),
+                                                      size=(22, 22) if change else (42, 42)))
                     c_self.button.grid(row=1, column=1)
 
             def __init__(self, master, new: bool, change: MainScreen = None):
