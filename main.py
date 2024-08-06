@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 5/08/2024
+    - Jensen Trillo, Version pre-1.0, 6/08/2024
 
     - ``Python 3.11.6``
 
@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from gzip import open as gzip_open
 from atexit import register as exit_register
-from misc_utils import init_kill_handlers, resource_path
+from misc_utils import init_kill_handlers, resource_path, is_empty
 from tkinter_utils import load_fonts, set_opacity
 from os import path as os_path
 from abc import abstractmethod
@@ -80,15 +80,14 @@ class Manager:
         with gzip_open(self._path, 'wb', 9) as f:
             f.write(urlsafe_b64decode(Fernet(self._key).encrypt(json_dumps(self._data).encode())))
 
-    def sort_services(self, z_a: bool = False) -> dict:
+    def get_services(self) -> dict:
         """
             Returns an alphabetically sorted
             data dictionary.
 
-            :param z_a: :class:`bool` ``False`` for **A-Z**, ``True`` for **Z-A**; `default=False`
             :returns: :class:`dict` Sorted data
         """
-        return {k: self._data[k] for k in sorted(self._data, reverse=z_a)}
+        return {k: self._data[k] for k in sorted(self._data)}
 
     # Service methods
     # noinspection PyDefaultArgument
@@ -260,6 +259,7 @@ class GUI(ctk.CTk):
                                         self.delete_step = 1
                                     else:
                                         manager.delete_service(self.name)
+                                        self.grid_forget(), master.service_objects.remove(self)
 
                                 if self.dropdown:  # Collapse dropdown
                                     # Reset everything
@@ -290,50 +290,103 @@ class GUI(ctk.CTk):
 
                             super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
-                            self.dropdown, self.accounts = False, accounts
+                            self.name, self.dropdown, self.accounts = name, False, accounts
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
                             self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
                                                         hover_color="#EAEAEA", text='', image=ctk.CTkImage(self.img, size=(20, 20)),
                                                         command=dropdown)
-                            self.label = ctk.CTkEntry(self, 350, 20, 0, 0, text_color='#3D3D3D', font=(JB, 20),
+                            self.label = ctk.CTkEntry(self, 160, 20, 0, 0, text_color='#3D3D3D', font=(JB, 20),
                                                      fg_color='transparent', validate='key',
                                                      validatecommand=(self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
+                            # Bindings
+                            def clear_err(_=None):
+                                self.label.configure(text_color='#3D3D3D'), self.error.place_forget()
+                            def reset(change_focus: bool):
+                                if change_focus:
+                                    self.focus_set()  # Remove focus from entry
+                                clear_err(), self.label.delete(0, 'end'), self.label.insert(0, self.name)  # Replace with self.name
                             self.label.bind('<Control-KeyPress-BackSpace>', lambda _: self.label.delete(0, 'end'))
-                            self.label.bind('<KeyRelease>', lambda _: self.label.configure(text_color='#3D3D3D'))
-                            self.name = name
-                            if name:  # Name is provided
+                            self.label.bind('<KeyRelease>', clear_err)
+                            # ===========================
+                            # Service name error handling
+                            self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121', font=(JB, 12), fg_color='transparent')
+                            def error():
+                                self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
+                            # ===========================
+                            def default():
                                 def rename(_):
-                                    if name != (new := self.label.get()):  # Different name
+                                    if self.name != (new := self.label.get()) and not is_empty(new):  # Different name and not empty
                                         try:
-                                            manager.rename_service(name, new)
+                                            manager.rename_service(self.name, new)
                                             self.name = new
                                         except ValueError:  # Conflicting
-                                            self.label.configure(text_color='#ff3333')
-                                            # ctk.CTkLabel(self, 150, 0, text='Conflicts with existing service', text_color='#eb2121',
-                                            #              font=(JB, 12), fg_color='transparent', wraplength=150,
-                                            #              justify='right').place(x=242, y=6)
-                                self.label.insert(0, name)
-                                self.label.bind('<KeyRelease-Return>', rename)
+                                            error()
+                                self.label.bind('<KeyRelease-Return>', rename)  # Allow ENTER to rename service
+                                self.label.bind('<KeyRelease-Escape>', lambda _: reset(True))
+                                self.label.bind('<FocusOut>', lambda _: reset(False))
+                            if name:  # Name is provided
+                                self.label.insert(0, name), default()
                             else:  # Add new service
                                 def add(_):
+                                    if not is_empty(new := self.label.get()):
+                                        try:
+                                            manager.add_service(new)  # KeyError
+                                            for n, id in bindings:
+                                                self.label.unbind(n, id)
+                                            default(), self.button.configure(state='normal'), self.focus_set()
+                                            master.adding, self.name = False, new
+                                            services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order once confirmed
+                                        except KeyError:  # Already exists
+                                            error()
+                                def remove(_):
                                     try:
-                                        manager.add_service(new := self.label.get())
-                                        self.label.unbind('<KeyRelease-Return>', binding)
-                                        self.button.configure(state='normal')
-                                        self.name = new
-                                    except KeyError:  # Already exists
-                                        self.label.configure(text_color='#ff3333')
+                                        self.grid_forget(), master.service_objects.remove(self)
+                                        master.adding = False
+                                    except ValueError:
+                                        pass
                                 self.button.configure(state='disabled')
-                                binding = self.label.bind('<KeyRelease-Return>', add)
+                                bindings = {
+                                    (s := '<KeyRelease-Return>', self.label.bind(s, add)),  # Add service upon ENTER
+                                    (s := '<KeyRelease-Escape>', self.label.bind(s, remove)),
+                                    (s := '<FocusOut>', self.label.bind(s, remove))
+                                }
                             self.button.place(x=4, y=8), self.label.place(x=30, y=8)
 
                     def __init__(self, master):
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
-                        self.services = manager.sort_services()
-                        self.service_objects = []
-                        for i, (service, accounts) in enumerate(self.services.items()):
-                            self.service_objects.append(self.Service(self, accounts, service).grid(row=i, column=0, pady=(0, 5)))
+                        self.adding, self.service_objects = False, []
+                        for i, (service, accounts) in enumerate(manager.get_services().items()):
+                            self.service_objects.append(o := self.Service(self, accounts, service)), o.grid(row=i, column=0, pady=(0, 5))
+
+                    def sort(self, z_a: bool = False): 
+                        addition = False  # If the user is in the process of adding a new service
+                        if not self.service_objects[-1].name:  # Last list item name is None (not added yet)
+                            addition = self.service_objects[-1]
+                            self.service_objects.pop(-1)
+                        self.service_objects = [o for o in sorted(self.service_objects, reverse=z_a, 
+                                                                  key=lambda o: o.name)]
+                        for i, o in enumerate(self.service_objects, 1 if addition else 0):
+                            # if o.winfo_ismapped():
+                            o.grid_configure(row=i)
+                        if addition:  # Re-add the addition service box
+                            self.service_objects.append(addition)
+
+                    def add(self):
+                        if not self.adding:
+                            self.adding = True
+                            new = self.Service(self, {})
+                            new.grid(row=0, column=0, pady=(0, 5)), new.label.focus_set()
+                            for i, o in enumerate(self.service_objects, 1):
+                                o.grid_configure(row=i)
+                            self.service_objects.append(new)
+                    
+                    def query(self, q: str):
+                        for o in self.service_objects:
+                            if o.name.startswith(q):  # If the objects name starts with the query
+                                o.grid()
+                            else:  # Else remove it (keeps grid configuration)
+                                o.grid_remove()
 
                 class Search(ctk.CTkFrame):  # Searchbar
                     def __init__(self, master):
@@ -345,14 +398,14 @@ class GUI(ctk.CTk):
                                            image=ctk.CTkImage(Image.open(f'{PATH}search.png'), size=(20, 20)))
                         set_opacity(img, color=TRANS), img.place(x=2, y=0)  # Remove BG and place
                         # Entry box for query
-                        self.query = ctk.CTkEntry(self, 147, 30, 0, 0, fg_color='transparent',
-                                                  text_color='#212121', font=(JB, 16))
+                        self.query = ctk.CTkEntry(self, 147, 30, 0, 0, fg_color='transparent', validate='key', 
+                                                  validatecommand=(self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'),
+                                                  text_color='#212121', font=(JB, 18))
+                        self.query.bind('<KeyRelease>', lambda _: services.query(self.query.get()))
+                        self.query.bind('<Control-KeyPress-BackSpace>', lambda _: self.query.delete(0, 'end'))
                         self.query.place(x=35, y=2)
 
                 class AddService(ctk.CTkFrame):
-                    def __add(self, _):
-                        pass
-
                     def __init__(self, master):
                         # Label and button with the text being '+' doesn't work as the plus exceeds the 35x35px
                         # dimensions. Because of this, a frame with the image on top is used, which means the frame
@@ -366,7 +419,7 @@ class GUI(ctk.CTk):
                             # Hover colours
                             o.bind('<Enter>', lambda _: self.configure(fg_color='#5BCA37'))  # Hover over
                             o.bind('<Leave>', lambda _: self.configure(fg_color='#55BB33'))  # Exit
-                            o.bind('<Button-1>', self.__add)
+                            o.bind('<Button-1>', lambda _: services.add())
 
                 # ========================================================================
                 super().__init__(master), self.grid_propagate(False), self.grid_anchor('n')
@@ -376,12 +429,18 @@ class GUI(ctk.CTk):
                 # SECOND ROW BUTTONS
                 Search(self).grid(row=1, column=0, sticky='w', padx=(0, 100))
                 # Sorting button
-                ctk.CTkButton(self, 75, 35, 5, 2, fg_color='transparent', border_color='#000000',
+                sorting = ctk.CTkButton(self, 75, 35, 5, 2, fg_color='transparent', border_color='#000000',
                               hover_color='#FFFFFF', text='A-Z', text_color='#000000', font=(JBB, 20),
-                              image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10))).grid(row=1, column=1, sticky='e')
+                              image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10)),
+                              command=lambda: (
+                                  sorting.configure(text=(order := 'A-Z' if sorting.cget('text') == 'Z-A' else 'Z-A')),
+                                  services.sort(order != 'A-Z')
+                              ))
+                sorting.grid(row=1, column=1, sticky='e')
                 AddService(self).grid(row=1, column=2, sticky='e')  # Add account button
                 # --
-                Services(self).grid(row=2, column=0, columnspan=3, pady=(10, 0))
+                services = Services(self)
+                services.grid(row=2, column=0, columnspan=3, pady=(10, 0))
                 # Change Password footer button
                 ctk.CTkButton(self, GUI.WIDTH, 40, 0, text='Change the master password', font=(JB, 12),
                               text_color='#343434', fg_color='#E4E3E3', hover_color='#d8d8d8',
