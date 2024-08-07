@@ -1,13 +1,14 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 6/08/2024
+    - Jensen Trillo, Version pre-1.0, 7/08/2024
 
     - ``Python 3.11.6``
 
     **MIT License, Copyright (c) 2024 Jensen Trillo**
 """
 import customtkinter as ctk
+from _tkinter import TclError
 from ujson import dumps as json_dumps, loads as json_loads
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from cryptography.fernet import Fernet, InvalidToken
@@ -259,6 +260,15 @@ class GUI(ctk.CTk):
                                     else:
                                         manager.delete_service(self.name)
                                         self.grid_forget(), master.service_objects.remove(self)
+                                        # Check if # of services allows search to be enabled
+                                        search.state_check(_s := manager.get_services())
+                                        if not len(_s):  # No services
+                                            master.special_message(master.no_services, True, '#40ACE3')
+                                        remove_bind_all(self.bind_all_id)
+                                        print(self.bind_all_id)
+                                        if master.adding:
+                                            master.service_objects[0].grid_forget()
+                                            master.adding, master.service_objects = False, []
                                 # ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
                                 if self.dropdown:  # Collapse dropdown
                                     # Reset everything
@@ -272,8 +282,7 @@ class GUI(ctk.CTk):
                                     delete = ctk.CTkButton(self, 0, 12, 5, 0, fg_color='transparent', text='Delete service',
                                                   text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
                                                   image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
-                                                  command=deletion_confirmation, border_color='#CC0202'
-                                                  )
+                                                  command=deletion_confirmation, border_color='#CC0202')
                                     def w(_):  # Wrapper for resetting deletion step upon hovering off
                                         delete.configure(border_width=0, text='Delete service')
                                         self.delete_step = False
@@ -300,6 +309,19 @@ class GUI(ctk.CTk):
                             # Bindings
                             def clear_err(_=None):
                                 self.label.configure(text_color='#3D3D3D'), self.error.place_forget()
+                            def remove_bind_all(_id: str):
+                                def recursive(obj):
+                                    for w in obj.winfo_children():
+                                        try:
+                                            w.unbind('<Button-1>', _id)
+                                        except (ValueError, TclError):
+                                            pass
+                                        recursive(w)
+                                recursive(master)
+                            def mouse_off(e, func):
+                                if self.focus_get() == self.label._entry and\
+                                    e.widget.winfo_containing(e.x_root, e.y_root) != self.label._entry:
+                                    func()
                             ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', clear_err)
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             # Service name error handling
@@ -324,6 +346,8 @@ class GUI(ctk.CTk):
                                 self.label.bind('<KeyRelease-Return>', rename)  # ENTER to rename service
                                 self.label.bind('<KeyRelease-Escape>', lambda _: reset(True))
                                 self.label.bind('<FocusOut>', lambda _: reset(False))
+                                self.bind_all_id = self.label._canvas.bind_all('<Button-1>', lambda e: mouse_off(e, lambda: reset(True)), '+')
+                                print(self.bind_all_id)
                             # --
                             if name:  # Name is provided
                                 self.label.insert(0, name), default()
@@ -337,11 +361,14 @@ class GUI(ctk.CTk):
                                             default(), self.button.configure(state='normal'), self.focus_set()
                                             master.adding, self.name = False, new
                                             services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
+                                            search.state_check()  # Check if # of services allows search to be enabled
                                         except KeyError:  # Already exists
                                             error()
-                                def remove(_):  # Remove the unconfirmed service
+                                def remove(_=None):  # Remove the unconfirmed service
                                     try:
                                         self.grid_forget(), master.service_objects.remove(self)
+                                        if not len(manager.get_services()):  # Place no services message
+                                            master.special_message(master.no_services, True, '#40ACE3')
                                         master.adding = False
                                     except ValueError:
                                         pass
@@ -356,10 +383,39 @@ class GUI(ctk.CTk):
                             self.button.place(x=4, y=8), self.label.place(x=30, y=8)
 
                     def __init__(self, master):
+                        class Start(ctk.CTkFrame):  # For when there are 0 services
+                            def __init__(self, master):
+                                super().__init__(master, 390, 348, 0, fg_color='transparent')
+                                self.grid_propagate(False), self.grid_anchor('center')
+                                ctk.CTkLabel(self, text='You have 0 services', text_color='#3295C7',
+                                             font=(JB, 20)).grid(row=0)
+                                ctk.CTkButton(self, 230, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
+                                              text=f'Add service', font=(JB, 14), hover_color="#5BCA37",
+                                              command=lambda: services.add(),
+                                              ).grid(row=1, pady=(6, 0))
+                        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
+                        # So border goes fully around
+                        self._scrollbar.configure(bg_color=TRANS), set_opacity(self._scrollbar, color=TRANS)
                         self.adding, self.service_objects = False, []  # adding for in the process of adding new service
-                        for i, (service, accounts) in enumerate(manager.get_services().items()):  # Place services
+                        # Special messages
+                        self.no_results = ctk.CTkLabel(self, 390, 348, text='No results...', text_color='#eb2121',
+                                                       font=(JB, 20))
+                        self.no_services = Start(self)
+                        # --
+                        for i, (service, accounts) in enumerate((s := manager.get_services()).items()):  # Place services
                             self.service_objects.append(o := self.Service(self, accounts, service)), o.grid(row=i, column=0, pady=(0, 5))
+                        if not len(s):  # No services
+                            self.special_message(self.no_services, True, '#40ACE3')
+
+                    def special_message(self, obj, show: bool, color: str = None):
+                        if show:
+                            self.configure(width=388, height=348, border_width=2, border_color=color,
+                                           scrollbar_button_color=TRANS)
+                            obj.grid()
+                        else:
+                            self.configure(width=390, height=350, border_width=0, scrollbar_button_color='#696969')
+                            obj.grid_remove()
 
                     def sort(self, z_a: bool = False):
                         addition = False  # If the user is in the process of adding a new service
@@ -369,34 +425,43 @@ class GUI(ctk.CTk):
                         self.service_objects = [o for o in sorted(self.service_objects, reverse=z_a,
                                                                   key=lambda o: o.name)]
                         for i, o in enumerate(self.service_objects, 1 if addition else 0):
-                            o.grid_configure(row=i)
+                            o.grid_configure(row=i), o.tkraise()  # raise ensures proper TAB order
                             # grid_configure places it again, so remove it if it is supposed to be unmapped
-                            # (because of search query, or it does not match the current search query)
-                            if not o.winfo_ismapped() or not o.name.lower().startswith(search.query.get().lower()):
+                            # (does not match the current search query)
+                            if not o.name.lower().startswith(search.query.get().strip().lower()):
                                 o.grid_remove()
                         if addition:  # Re-add the addition service box
                             self.service_objects.append(addition)
 
-                    def query(self, q: str):
+                    def query(self, q: str = ''):
+                        n = 0
                         for o in self.service_objects:
-                            if o.name.lower().startswith(q.lower()):  # If the objects name starts with the query
+                            if o.name.lower().startswith(q.strip().lower()):  # If the objects name starts with the query
                                 o.grid()
+                                n += 1
                             else:  # Else remove it (keeps grid configuration)
                                 o.grid_remove()
+                        self.special_message(self.no_results, not n, '#ff3333')  # No results message
 
                     def add(self):
                         if not self.adding:
+                            if not len(manager.get_services()):  # Only do it once - remove no services
+                                self.special_message(self.no_services, False)
+                            else:
+                                search.query.delete(0, 'end')  # Clear search query
+                                self.query()  # Re-update results
+                            # --
                             self.adding = True
                             (new := self.Service(self, {})).grid(row=0, column=0, pady=(0, 5)), new.label.focus_set()
                             for i, o in enumerate(self.service_objects, 1):
                                 o.grid_configure(row=i)
-                                # grid_configure places it again, so remove it if it is supposed to be unmapped
-                                # (because of search query)
-                                if not o.winfo_ismapped():
-                                    o.grid_remove()
                             self.service_objects.append(new)
 
                 class Search(ctk.CTkFrame):  # Searchbar
+                    def state_check(self, s: dict = None):
+                        # s can be provided as to reduce calls to get_services()
+                        self.query.configure(state='normal' if len(s if s else manager.get_services()) > 1 else 'disabled')
+
                     def __init__(self, master):
                         super().__init__(master, 185, 35, 5, 2, fg_color='transparent',
                                          border_color='#000000')
@@ -410,7 +475,7 @@ class GUI(ctk.CTk):
                                                   text_color='#212121', font=(JB, 18), validate='key',
                                                   validatecommand=(self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
                         self.query.bind('<KeyRelease>', lambda _: services.query(self.query.get()))
-                        ctrl_backspace_bind(self.query), self.query.place(x=35, y=2)
+                        self.state_check(), ctrl_backspace_bind(self.query), self.query.place(x=35, y=2)
 
                 class AddService(ctk.CTkFrame):
                     def __init__(self, master):
@@ -455,8 +520,8 @@ class GUI(ctk.CTk):
         class LoginScreen(Screen):
             class Content(ctk.CTkFrame):  # Separate frame to keep it vertically centered
                 # noinspection PyMethodParameters
-                # self is c_self here so switch_screen() can access parent CTk
-                def __init__(c_self, master, new: bool, change: MainScreen = None):
+                # self is _self here so switch_screen() can access parent CTk
+                def __init__(_self, master, new: bool, change: MainScreen = None):
                     def validate(action, text: str) -> bool:  # Validate command
                         if int(action):  # Insert
                             try:
@@ -470,10 +535,10 @@ class GUI(ctk.CTk):
 
                     def check_password(*_):  # Instantiate Manager class
                         def error():
-                            c_self.password.configure(border_color='#ff3333')
-                            c_self.button.configure(fg_color='#ff3333', state='disabled')
+                            _self.password.configure(border_color='#ff3333')
+                            _self.button.configure(fg_color='#ff3333', state='disabled')
 
-                        if len(entry := c_self.password.get()) < MIN_PASS_LENGTH:
+                        if len(entry := _self.password.get()) < MIN_PASS_LENGTH:
                             error()
                             return
                         if change:  # Change password to new one
@@ -494,29 +559,29 @@ class GUI(ctk.CTk):
 
                     def reset(e):
                         # If the event character is valid, and above 0 characters, reset to normal colours
-                        if len(c_self.password.get()) > 0 and validate(1, e.char):
-                            c_self.password.configure(border_color='#B8B7B7')
-                            c_self.button.configure(fg_color='#55BB33', state='normal')
+                        if len(_self.password.get()) > 0 and validate(1, e.char):
+                            _self.password.configure(border_color='#B8B7B7')
+                            _self.button.configure(fg_color='#55BB33', state='normal')
                     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                     super().__init__(master, fg_color='transparent')
-                    label = ctk.CTkLabel(c_self, text=f"{'Change' if change else 'Create' if new else 'Enter'} "
+                    label = ctk.CTkLabel(_self, text=f"{'Change' if change else 'Create' if new else 'Enter'} "
                                                       f"your password", font=(JB, 16), text_color='#000000', fg_color=TRANS)
                     set_opacity(label, color=TRANS), label.grid(row=0, column=0, columnspan=2, sticky='w')
                     # Password Entry
-                    c_self.password = ctk.CTkEntry(c_self, 300, 80, 0, 2, 'transparent', '#E4E4E4', '#B8B7B7',
+                    _self.password = ctk.CTkEntry(_self, 300, 80, 0, 2, 'transparent', '#E4E4E4', '#B8B7B7',
                                                      '#000000', font=(JB, 28), show='*', validate='key',
-                                                   validatecommand=(c_self.register(validate), '%d', '%P'))
-                    c_self.password.bind('<Control-KeyPress-BackSpace>', lambda e: (reset(e),
-                                                                                    c_self.password.delete(0, 'end')))
-                    c_self.password.bind('<KeyRelease-Return>', check_password)
-                    c_self.password.bind('<KeyRelease>', reset)
-                    c_self.button = ctk.CTkButton(c_self, 50, 80, 0, fg_color='#55BB33', text='',
-                                                  hover_color='#5BCA37', command=check_password,
-                                                  image=ctk.CTkImage(Image.open(
+                                                  validatecommand=(_self.register(validate), '%d', '%P'))
+                    _self.password.bind('<Control-KeyPress-BackSpace>', lambda e: (reset(e),
+                                                                                   _self.password.delete(0, 'end')))
+                    _self.password.bind('<KeyRelease-Return>', check_password)
+                    _self.password.bind('<KeyRelease>', reset)
+                    _self.button = ctk.CTkButton(_self, 50, 80, 0, fg_color='#55BB33', text='',
+                                                 hover_color='#5BCA37', command=check_password,
+                                                 image=ctk.CTkImage(Image.open(
                                                       f'{PATH}{"edit" if change else "chev_right"}.png'),
                                                       size=(22, 22) if change else (42, 42)))
                     # --
-                    c_self.password.grid(row=1, column=0), c_self.button.grid(row=1, column=1)
+                    _self.password.grid(row=1, column=0), _self.button.grid(row=1, column=1)
 
             def __init__(self, master, new: bool, change: MainScreen = None):
                 super().__init__(master), self.grid_propagate(False), self.grid_anchor('center')
