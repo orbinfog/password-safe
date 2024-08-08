@@ -22,7 +22,7 @@ from os import path as os_path
 from PIL import Image, ImageEnhance
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
-DATA_PATH = 'data.json'
+DATA_PATH = 'data2.json'
 MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
 MAX_SERVICE_LENGTH = 12
@@ -268,6 +268,7 @@ class GUI(ctk.CTk):
                                                       validatecommand=(self.register(
                                                           lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
                             # Bindings
+                            self.bind('<Double-Button-1>', lambda _: (print('DOUBLE'), self.label.focus_set()))
                             self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
                             self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
                             self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'),
@@ -384,11 +385,25 @@ class GUI(ctk.CTk):
                         def mouse_off(e):
                             try:
                                 # If the current focus is a Service, and the clicked widget is not the focus
+                                print('START')
                                 if isinstance((parent := (f := self.focus_get()).master.master), self.Service
                                               ) and e.widget != f:
-                                    print(e.widget, f)
-                                    if any(x in str(e.widget) for x in {'addservice', 'service'}) and not self.name:
-                                        return
+                                    print(f)
+                                    if not parent.name:  # Adding service
+                                        self.parent_service = None
+                                        def recursive(obj):
+                                            if isinstance(obj, self.Service):
+                                                self.parent_service = obj
+                                            elif obj != master:
+                                                recursive(obj.master)
+                                            else:
+                                                return
+                                        recursive(e.widget)
+                                        if parent == self.parent_service:  # Allow clicking within service addition
+                                            return
+                                    # if not parent.name and any(x in str(e.widget) for x in {'addservice', 'service'}):
+                                    #     return
+                                    # Change focus if the widget is not AddService obj (so adding can take focus)
                                     parent.handle_change('addservice' not in str(e.widget))
                             except AttributeError:  # Is not Service
                                 pass
@@ -591,8 +606,8 @@ class GUI(ctk.CTk):
                 ctk.CTkLabel(self, text='', image=ctk.CTkImage(Image.open(f'{PATH}stripes.png'),
                                                                size=(GUI.WIDTH, GUI.HEIGHT))).pack()
                 self.footer.tkraise()  # Footer above stripes background image
-                # Place content + set focus after 50ms to password entry box
-                (c := self.Content(self, new, change)).grid(pady=(0, 106)), self.after(50, c.password.focus_set)
+                # Place content + set focus after 75ms to password entry box
+                (c := self.Content(self, new, change)).grid(pady=(0, 106)), self.after(75, c.password.focus_set)
                 # ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
                 placement = (45, 363)  # Default X/Y for Caps Lock
                 if change:  # Back button
