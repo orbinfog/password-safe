@@ -8,7 +8,6 @@
     **MIT License, Copyright (c) 2024 Jensen Trillo**
 """
 import customtkinter as ctk
-from tkinter import Entry
 from ujson import dumps as json_dumps, loads as json_loads
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from cryptography.fernet import Fernet, InvalidToken
@@ -22,7 +21,7 @@ from os import path as os_path
 from PIL import Image, ImageEnhance
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
-DATA_PATH = 'data2.json'
+DATA_PATH = 'data.json'
 MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
 MAX_SERVICE_LENGTH = 12
@@ -257,7 +256,7 @@ class GUI(ctk.CTk):
                             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                             super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
-                            self.master, self.name, self.dropdown, self.accounts = master, name, False, accounts
+                            self.name, self.delete_step, self.dropdown, self.accounts = name, False, False, accounts
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
                             self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
@@ -268,7 +267,12 @@ class GUI(ctk.CTk):
                                                       validatecommand=(self.register(
                                                           lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
                             # Bindings
-                            self.bind('<Double-Button-1>', lambda _: (print('DOUBLE'), self.label.focus_set()))
+                            def double(_):
+                                master.double = True
+                                self.label.focus_set()
+                            self.bind('<Double-Button-1>', double)
+                            # import pyautogui
+                            # self.after(1000, lambda: (pyautogui.click(*self.winfo_pointerxy()), self.after(400, lambda: pyautogui.click(*self.winfo_pointerxy()))))
                             self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
                             self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
                             self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'),
@@ -276,11 +280,11 @@ class GUI(ctk.CTk):
                             ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', self.clear_err)
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             # Service name error handling
-                            self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121',
-                                                      font=(JB, 12), fg_color='transparent')
 
                             def error():
                                 self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
+                            self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121',
+                                                      font=(JB, 12), fg_color='transparent')
 
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             def default():
@@ -321,13 +325,14 @@ class GUI(ctk.CTk):
                                 else:
                                     manager.delete_service(self.name)
                                     self.grid_forget(), self.master.service_objects.remove(self)
-                                    # Check if # of services allows search to be enabled
-                                    search.state_check(_s := manager.get_services())
-                                    if not len(_s):  # No services
+                                    if len(_s := manager.get_services()) == 1:  # Only one service, clear search query
+                                        search.query.delete(0, 'end'), self.master.query()
+                                    if not len(_s):  # No services at all
                                         self.master.special_message(self.master.no_services, True, '#40ACE3')
-                                    # if master.adding:
-                                    #     master.service_objects[0].grid_forget()
-                                    #     master.adding, master.service_objects = False, []
+                                    elif q := search.query.get():  # Enough services, check for results
+                                        self.master.query(q)
+                                    # Check if # of services allows search to be enabled
+                                    search.state_check(_s)
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             if self.dropdown:  # Collapse dropdown
                                 # Reset everything
@@ -337,7 +342,6 @@ class GUI(ctk.CTk):
                                 # Make the frames new height: (# of accounts * 82) + 70
                                 self.configure(height=(height := 115 + (len(self.accounts) * 82)))
                                 self.button.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
-                                self.delete_step = False
                                 delete = ctk.CTkButton(self, 0, 12, 5, 0, fg_color='transparent', text='Delete service',
                                                 text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
                                                 image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
@@ -384,12 +388,12 @@ class GUI(ctk.CTk):
 
                         def mouse_off(e):
                             try:
+                                if self.double:  # Allow double mouse click for setting service entry focus
+                                    self.double = False
                                 # If the current focus is a Service, and the clicked widget is not the focus
-                                print('START')
-                                if isinstance((parent := (f := self.focus_get()).master.master), self.Service
+                                elif isinstance((parent := (f := self.focus_get()).master.master), self.Service
                                               ) and e.widget != f:
-                                    print(f)
-                                    if not parent.name:  # Adding service
+                                    if not parent.name:  # Currently adding service
                                         self.parent_service = None
                                         def recursive(obj):
                                             if isinstance(obj, self.Service):
@@ -398,21 +402,24 @@ class GUI(ctk.CTk):
                                                 recursive(obj.master)
                                             else:
                                                 return
-                                        recursive(e.widget)
-                                        if parent == self.parent_service:  # Allow clicking within service addition
+                                        recursive(e.widget)  # Check if clicked widget is a Service
+                                        # [parent == self.parent_service] = Allow clicking within Service addition
+                                        # [e.widget.master == sorting] Allow clicking A-Z sorting
+                                        # ['addservice' in str(e.widget)] Make clicking the Add button do nothing
+                                        if (parent == self.parent_service or e.widget.master == sorting or
+                                                'addservice' in str(e.widget)):
                                             return
-                                    # if not parent.name and any(x in str(e.widget) for x in {'addservice', 'service'}):
-                                    #     return
                                     # Change focus if the widget is not AddService obj (so adding can take focus)
                                     parent.handle_change('addservice' not in str(e.widget))
                             except AttributeError:  # Is not Service
                                 pass
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
-                        self._parent_canvas.bind_all('<Button-1>', mouse_off, '+')
+                        self._parent_canvas.bind_all('<Button-1>', mouse_off, '+')  # For editing
                         # So border goes fully around
                         self._scrollbar.configure(bg_color=TRANS), set_opacity(self._scrollbar, color=TRANS)
-                        self.adding, self.service_objects = False, []  # adding for in the process of adding new service
+                        # 'double' for double click to set focus, 'adding' for in the process of adding new service
+                        self.double, self.adding, self.service_objects = False, False, []
                         # Special messages
                         self.no_results = ctk.CTkLabel(self, 390, 348, text='No results...', text_color='#eb2121',
                                                        font=(JB, 20))
@@ -477,7 +484,10 @@ class GUI(ctk.CTk):
                 class Search(ctk.CTkFrame):  # Searchbar
                     def state_check(self, s: dict = None):
                         # s can be provided as to reduce calls to get_services()
-                        self.query.configure(state='normal' if len(s if s else manager.get_services()) > 1 else 'disabled')
+                        self.query.configure(
+                            state='normal' if (enable := len(s if s else manager.get_services()) > 1) else 'disabled')
+                        if not enable:
+                            self.focus_set()  # Otherwise <KeyRelease> can still be called
 
                     def __init__(self, master):
                         super().__init__(master, 185, 35, 5, 2, fg_color='transparent',
