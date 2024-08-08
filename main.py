@@ -8,7 +8,7 @@
     **MIT License, Copyright (c) 2024 Jensen Trillo**
 """
 import customtkinter as ctk
-from _tkinter import TclError
+from tkinter import Entry
 from ujson import dumps as json_dumps, loads as json_loads
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 from cryptography.fernet import Fernet, InvalidToken
@@ -22,7 +22,7 @@ from os import path as os_path
 from PIL import Image, ImageEnhance
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
-DATA_PATH = 'data2.json'
+DATA_PATH = 'data.json'
 MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
 MAX_SERVICE_LENGTH = 12
@@ -237,6 +237,7 @@ class GUI(ctk.CTk):
 
         def ctrl_backspace_bind(obj):
             obj.bind('<Control-KeyPress-BackSpace>', lambda _: obj.delete(0, 'end'))
+
         # ███████
         # SCREENS
         class Screen(ctk.CTkFrame):  # Base abstract class
@@ -248,9 +249,69 @@ class GUI(ctk.CTk):
         class MainScreen(Screen):
             def __init__(self, master):
                 manager = master.manager  # So it can be accessed anywhere
+
                 # Local Components
                 class Services(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
                     class Service(ctk.CTkFrame):
+                        def __init__(self, master, accounts: dict, name: str = None):
+                            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                            super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
+                            self.grid_propagate(False), self.grid_anchor('nw')
+                            self.master, self.name, self.dropdown, self.accounts = master, name, False, accounts
+                            # Chevron + Service name
+                            self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
+                            self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
+                                                        hover_color="#EAEAEA", text='', command=self.toggle_dropdown,
+                                                        image=ctk.CTkImage(self.img, size=(20, 20)))
+                            self.label = ctk.CTkEntry(self, 160, 20, 0, 0, text_color='#3D3D3D', font=(JB, 20),
+                                                      fg_color='transparent', validate='key',
+                                                      validatecommand=(self.register(
+                                                          lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
+                            # Bindings
+                            self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
+                            self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
+                            self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'),
+                                                             self.error.place_forget())
+                            ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', self.clear_err)
+                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                            # Service name error handling
+                            self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121',
+                                                      font=(JB, 12), fg_color='transparent')
+
+                            def error():
+                                self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
+
+                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                            def default():
+                                def rename(_):
+                                    # Different name and not empty
+                                    if self.name != (new := self.label.get()) and not is_empty(new):
+                                        try:
+                                            manager.rename_service(self.name, new)
+                                            self.name = new
+                                            services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
+                                        except ValueError:  # Conflicting
+                                            error()
+                                self.label.bind('<KeyRelease-Return>', rename)  # ENTER to rename service
+                            if name:  # Name is provided
+                                self.label.insert(0, name), default()
+                            else:  # Add new service
+                                def add(_):  # Convert into proper service box
+                                    if not is_empty(new := self.label.get()):
+                                        try:
+                                            manager.add_service(new)  # KeyError
+                                            self.label.unbind('<KeyRelease-Return>', binding)  # Remove ENTER binding
+                                            default(), self.button.configure(state='normal'), self.focus_set()
+                                            master.adding, self.name = False, new
+                                            services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
+                                            search.state_check()  # Check if # of services allows search to be enabled
+                                        except KeyError:  # Already exists
+                                            error()
+                                self.button.configure(state='disabled')
+                                binding = self.label.bind('<KeyRelease-Return>', add)  # Add service upon ENTER
+                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                            self.button.place(x=4, y=8), self.label.place(x=30, y=8)
+
                         def toggle_dropdown(self):
                             def deletion_confirmation():
                                 if not self.delete_step:
@@ -308,59 +369,6 @@ class GUI(ctk.CTk):
                                 except ValueError:
                                     pass
 
-                        def __init__(self, master, accounts: dict, name: str = None):
-                            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                            super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
-                            self.grid_propagate(False), self.grid_anchor('nw')
-                            self.master, self.name, self.dropdown, self.accounts = master, name, False, accounts
-                            # Chevron + Service name
-                            self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
-                            self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
-                                                        hover_color="#EAEAEA", text='', image=ctk.CTkImage(self.img, size=(20, 20)),
-                                                        command=self.toggle_dropdown)
-                            self.label = ctk.CTkEntry(self, 160, 20, 0, 0, text_color='#3D3D3D', font=(JB, 20),
-                                                     fg_color='transparent', validate='key',
-                                                     validatecommand=(self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
-                            # Bindings
-                            self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
-                            self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
-                            self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'), self.error.place_forget())
-                            ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', self.clear_err)
-                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                            # Service name error handling
-                            self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121', font=(JB, 12), fg_color='transparent')
-                            def error():
-                                self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
-                            def default():
-                                def rename(_):
-                                    if self.name != (new := self.label.get()) and not is_empty(new):  # Different name and not empty
-                                        try:
-                                            manager.rename_service(self.name, new)
-                                            self.name = new
-                                            services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
-                                        except ValueError:  # Conflicting
-                                            error()
-                                self.label.bind('<KeyRelease-Return>', rename)  # ENTER to rename service
-                            # --
-                            if name:  # Name is provided
-                                self.label.insert(0, name), default()
-                            else:  # Add new service
-                                def add(_):  # Convert into proper service box
-                                    if not is_empty(new := self.label.get()):
-                                        try:
-                                            manager.add_service(new)  # KeyError
-                                            self.label.unbind('<KeyRelease-Return>', binding)  # Remove ENTER binding
-                                            default(), self.button.configure(state='normal'), self.focus_set()
-                                            master.adding, self.name = False, new
-                                            services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
-                                            search.state_check()  # Check if # of services allows search to be enabled
-                                        except KeyError:  # Already exists
-                                            error()
-                                self.button.configure(state='disabled')
-                                binding = self.label.bind('<KeyRelease-Return>', add)  # Add service upon ENTER
-                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                            self.button.place(x=4, y=8), self.label.place(x=30, y=8)
-
                     def __init__(self, master):
                         class Start(ctk.CTkFrame):  # For when there are 0 services
                             def __init__(self, master):
@@ -372,18 +380,19 @@ class GUI(ctk.CTk):
                                               text=f'Add service', font=(JB, 14), hover_color="#5BCA37",
                                               command=lambda: services.add(),
                                               ).grid(row=1, pady=(6, 0))
-                        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
                         def mouse_off(e):
                             try:
                                 # If the current focus is a Service, and the clicked widget is not the focus
-                                if isinstance((f := self.focus_get()).master.master, self.Service) and e.widget != f:
-                                    print(True)
+                                if isinstance((parent := (f := self.focus_get()).master.master), self.Service
+                                              ) and e.widget != f:
+                                    print(e.widget, f)
+                                    if any(x in str(e.widget) for x in {'addservice', 'service'}) and not self.name:
+                                        return
+                                    parent.handle_change('addservice' not in str(e.widget))
                             except AttributeError:  # Is not Service
                                 pass
-                            # if (c := self.focus_get()) == self.label._entry and\
-                            #     e.widget.winfo_containing(e.x_root, e.y_root) != c:
-                            #     func()
-                        
+                        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
                         self._parent_canvas.bind_all('<Button-1>', mouse_off, '+')
                         # So border goes fully around
@@ -394,8 +403,10 @@ class GUI(ctk.CTk):
                                                        font=(JB, 20))
                         self.no_services = Start(self)
                         # --
-                        for i, (service, accounts) in enumerate((s := manager.get_services()).items()):  # Place services
-                            self.service_objects.append(o := self.Service(self, accounts, service)), o.grid(row=i, column=0, pady=(0, 5))
+                        for i, (service, accounts) in enumerate((s := manager.get_services()).items()):
+                            # Place services
+                            self.service_objects.append(o := self.Service(self, accounts, service))
+                            o.grid(row=i, column=0, pady=(0, 5))
                         if not len(s):  # No services
                             self.special_message(self.no_services, True, '#40ACE3')
 
