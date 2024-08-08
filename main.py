@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 7/08/2024
+    - Jensen Trillo, Version pre-1.0, 8/08/2024
 
     - ``Python 3.11.6``
 
@@ -22,7 +22,7 @@ from os import path as os_path
 from PIL import Image, ImageEnhance
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
-DATA_PATH = 'data.json'
+DATA_PATH = 'data2.json'
 MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
 MAX_SERVICE_LENGTH = 12
@@ -251,90 +251,87 @@ class GUI(ctk.CTk):
                 # Local Components
                 class Services(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
                     class Service(ctk.CTkFrame):
-                        def __init__(self, master, accounts: dict, name: str = None):
-                            def dropdown():  # Local func rather than method so it can access master
-                                def deletion_confirmation():
-                                    if not self.delete_step:
-                                        delete.configure(border_width=1, text='Confirm deletion')
-                                        self.delete_step = True
-                                    else:
-                                        manager.delete_service(self.name)
-                                        self.grid_forget(), master.service_objects.remove(self)
-                                        # Check if # of services allows search to be enabled
-                                        search.state_check(_s := manager.get_services())
-                                        if not len(_s):  # No services
-                                            master.special_message(master.no_services, True, '#40ACE3')
-                                        remove_bind_all(self.bind_all_id)
-                                        print(self.bind_all_id)
-                                        if master.adding:
-                                            master.service_objects[0].grid_forget()
-                                            master.adding, master.service_objects = False, []
-                                # ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                                if self.dropdown:  # Collapse dropdown
-                                    # Reset everything
-                                    self.configure(height=45)
-                                    self.button.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
-                                else:  # Make dropdown
-                                    # Make the frames new height: (# of accounts * 82) + 70
-                                    self.configure(height=(height := 115 + (len(self.accounts) * 82)))
-                                    self.button.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
+                        def toggle_dropdown(self):
+                            def deletion_confirmation():
+                                if not self.delete_step:
+                                    delete.configure(border_width=1, text='Confirm deletion')
+                                    self.delete_step = True
+                                else:
+                                    manager.delete_service(self.name)
+                                    self.grid_forget(), self.master.service_objects.remove(self)
+                                    # Check if # of services allows search to be enabled
+                                    search.state_check(_s := manager.get_services())
+                                    if not len(_s):  # No services
+                                        self.master.special_message(self.master.no_services, True, '#40ACE3')
+                                    # if master.adding:
+                                    #     master.service_objects[0].grid_forget()
+                                    #     master.adding, master.service_objects = False, []
+                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                            if self.dropdown:  # Collapse dropdown
+                                # Reset everything
+                                self.configure(height=45)
+                                self.button.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
+                            else:  # Make dropdown
+                                # Make the frames new height: (# of accounts * 82) + 70
+                                self.configure(height=(height := 115 + (len(self.accounts) * 82)))
+                                self.button.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
+                                self.delete_step = False
+                                delete = ctk.CTkButton(self, 0, 12, 5, 0, fg_color='transparent', text='Delete service',
+                                                text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
+                                                image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
+                                                command=deletion_confirmation, border_color='#CC0202')
+                                def w(_):  # Wrapper for resetting deletion step upon hovering off
+                                    delete.configure(border_width=0, text='Delete service')
                                     self.delete_step = False
-                                    delete = ctk.CTkButton(self, 0, 12, 5, 0, fg_color='transparent', text='Delete service',
-                                                  text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
-                                                  image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
-                                                  command=deletion_confirmation, border_color='#CC0202')
-                                    def w(_):  # Wrapper for resetting deletion step upon hovering off
-                                        delete.configure(border_width=0, text='Delete service')
-                                        self.delete_step = False
-                                    delete.bind('<Leave>', w), delete.place(x=8, y=height - 34)
-                                    # Add new account button
-                                    ctk.CTkButton(self, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
-                                                  text=f'Add{" another" if len(self.accounts) > 0 else ""} account',
-                                                  font=(JB, 14), hover_color="#5BCA37"
-                                                  ).grid(row=1, column=0, padx=45, pady=(45, 0))
-                                # --
-                                self.dropdown = not self.dropdown
+                                delete.bind('<Leave>', w), delete.place(x=8, y=height - 34)
+                                # Add new account button
+                                ctk.CTkButton(self, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
+                                                text=f'Add{" another" if len(self.accounts) > 0 else ""} account',
+                                                font=(JB, 14), hover_color="#5BCA37"
+                                                ).grid(row=1, column=0, padx=45, pady=(45, 0))
+                            # --
+                            self.dropdown = not self.dropdown
+
+                        def handle_change(self, change_focus: bool):
+                            if self.name:  # Reset
+                                if change_focus:
+                                    self.focus_set()  # Remove focus from entry
+                                self.clear_err()
+                                # Replace with self.name
+                                self.label.delete(0, 'end'), self.label.insert(0, self.name)
+                            else:  # Remove unconfirmed service
+                                try:
+                                    self.grid_forget(), self.master.service_objects.remove(self)
+                                    if not len(manager.get_services()):  # Place no services message
+                                        self.master.special_message(self.master.no_services, True, '#40ACE3')
+                                    self.master.adding = False
+                                except ValueError:
+                                    pass
+
+                        def __init__(self, master, accounts: dict, name: str = None):
                             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                             super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
-                            self.name, self.dropdown, self.accounts = name, False, accounts
+                            self.master, self.name, self.dropdown, self.accounts = master, name, False, accounts
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
                             self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
                                                         hover_color="#EAEAEA", text='', image=ctk.CTkImage(self.img, size=(20, 20)),
-                                                        command=dropdown)
+                                                        command=self.toggle_dropdown)
                             self.label = ctk.CTkEntry(self, 160, 20, 0, 0, text_color='#3D3D3D', font=(JB, 20),
                                                      fg_color='transparent', validate='key',
                                                      validatecommand=(self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
                             # Bindings
-                            def clear_err(_=None):
-                                self.label.configure(text_color='#3D3D3D'), self.error.place_forget()
-                            def remove_bind_all(_id: str):
-                                def recursive(obj):
-                                    for w in obj.winfo_children():
-                                        try:
-                                            w.unbind('<Button-1>', _id)
-                                        except (ValueError, TclError):
-                                            pass
-                                        recursive(w)
-                                recursive(master)
-                            def mouse_off(e, func):
-                                if self.focus_get() == self.label._entry and\
-                                    e.widget.winfo_containing(e.x_root, e.y_root) != self.label._entry:
-                                    func()
-                            ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', clear_err)
+                            self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
+                            self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
+                            self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'), self.error.place_forget())
+                            ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', self.clear_err)
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             # Service name error handling
                             self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121', font=(JB, 12), fg_color='transparent')
                             def error():
                                 self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
                             def default():
-                                def reset(change_focus: bool):
-                                    if change_focus:
-                                        self.focus_set()  # Remove focus from entry
-                                    clear_err()
-                                    # Replace with self.name
-                                    self.label.delete(0, 'end'), self.label.insert(0, self.name)
                                 def rename(_):
                                     if self.name != (new := self.label.get()) and not is_empty(new):  # Different name and not empty
                                         try:
@@ -344,10 +341,6 @@ class GUI(ctk.CTk):
                                         except ValueError:  # Conflicting
                                             error()
                                 self.label.bind('<KeyRelease-Return>', rename)  # ENTER to rename service
-                                self.label.bind('<KeyRelease-Escape>', lambda _: reset(True))
-                                self.label.bind('<FocusOut>', lambda _: reset(False))
-                                self.bind_all_id = self.label._canvas.bind_all('<Button-1>', lambda e: mouse_off(e, lambda: reset(True)), '+')
-                                print(self.bind_all_id)
                             # --
                             if name:  # Name is provided
                                 self.label.insert(0, name), default()
@@ -356,29 +349,15 @@ class GUI(ctk.CTk):
                                     if not is_empty(new := self.label.get()):
                                         try:
                                             manager.add_service(new)  # KeyError
-                                            for n, _id in bindings:
-                                                self.label.unbind(n, _id)
+                                            self.label.unbind('<KeyRelease-Return>', binding)  # Remove ENTER binding
                                             default(), self.button.configure(state='normal'), self.focus_set()
                                             master.adding, self.name = False, new
                                             services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
                                             search.state_check()  # Check if # of services allows search to be enabled
                                         except KeyError:  # Already exists
                                             error()
-                                def remove(_=None):  # Remove the unconfirmed service
-                                    try:
-                                        self.grid_forget(), master.service_objects.remove(self)
-                                        if not len(manager.get_services()):  # Place no services message
-                                            master.special_message(master.no_services, True, '#40ACE3')
-                                        master.adding = False
-                                    except ValueError:
-                                        pass
-
                                 self.button.configure(state='disabled')
-                                bindings = {
-                                    (s := '<KeyRelease-Return>', self.label.bind(s, add)),  # Add service upon ENTER
-                                    (s := '<KeyRelease-Escape>', self.label.bind(s, remove)),
-                                    (s := '<FocusOut>', self.label.bind(s, remove))
-                                }
+                                binding = self.label.bind('<KeyRelease-Return>', add)  # Add service upon ENTER
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             self.button.place(x=4, y=8), self.label.place(x=30, y=8)
 
@@ -394,7 +373,19 @@ class GUI(ctk.CTk):
                                               command=lambda: services.add(),
                                               ).grid(row=1, pady=(6, 0))
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                        def mouse_off(e):
+                            try:
+                                # If the current focus is a Service, and the clicked widget is not the focus
+                                if isinstance((f := self.focus_get()).master.master, self.Service) and e.widget != f:
+                                    print(True)
+                            except AttributeError:  # Is not Service
+                                pass
+                            # if (c := self.focus_get()) == self.label._entry and\
+                            #     e.widget.winfo_containing(e.x_root, e.y_root) != c:
+                            #     func()
+                        
                         super().__init__(master, 390, 350, 0, fg_color='transparent')
+                        self._parent_canvas.bind_all('<Button-1>', mouse_off, '+')
                         # So border goes fully around
                         self._scrollbar.configure(bg_color=TRANS), set_opacity(self._scrollbar, color=TRANS)
                         self.adding, self.service_objects = False, []  # adding for in the process of adding new service
