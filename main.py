@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 8/08/2024
+    - Jensen Trillo, Version pre-1.0, 12/08/2024
 
     - ``Python 3.11.6``
 
@@ -19,17 +19,20 @@ from misc_utils import init_kill_handlers, resource_path, is_empty
 from tkinter_utils import load_fonts, set_opacity
 from os import path as os_path
 from PIL import Image, ImageEnhance
+# DO NOT TOUCH section
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
-DATA_PATH = 'data.json'
-MIN_PASS_LENGTH = 8
-MAX_PASS_LENGTH = 16
-MAX_SERVICE_LENGTH = 12
 TRANS = '#feffff'  # Transparent color hex
 # Font consts (to make usages smaller)
 JB = 'JetBrains Mono NL'
 JBB = 'JetBrains Mono NL Bold'
 load_fonts((f'{PATH}JetBrainsMonoNL-Regular.ttf', f'{PATH}JetBrainsMonoNL-Bold.ttf'))
+# --
+DATA_PATH = 'data.json'
+MIN_PASS_LENGTH = 8
+MAX_PASS_LENGTH = 16
+MAX_SERVICE_LENGTH = 12
+INACTIVITY_PERIOD = 120  # In Seconds
 
 
 class Manager:
@@ -192,6 +195,12 @@ class Manager:
 class GUI(ctk.CTk):
     WIDTH, HEIGHT = 450, 575
 
+    class Screen(ctk.CTkFrame):  # Base abstract class
+        def __init__(self, master):
+            super().__init__(master, GUI.WIDTH, GUI.HEIGHT, 0, fg_color='#FBFBFB')
+            self.footer = GUI.Footer(self)
+            self.footer.place(x=0, y=GUI.HEIGHT - 40)  # Footer
+
     class Footer(ctk.CTkFrame):
         def __init__(self, master):
             super().__init__(master, GUI.WIDTH, 40, 0, fg_color='#B8B7B7')
@@ -203,7 +212,8 @@ class GUI(ctk.CTk):
              .grid(row=0, column=1, sticky='e', padx=(0, 15)))
 
     def __init__(self):
-        # Local functions
+        # 〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉
+        # LOCAL UTILITY FUNCTIONS
         def img_button_brightness(obj: ctk.CTkButton | ctk.CTkLabel, image: Image.Image, size: tuple[int, int],
                                   brightness: float):
             """
@@ -237,21 +247,19 @@ class GUI(ctk.CTk):
         def ctrl_backspace_bind(obj):
             obj.bind('<Control-KeyPress-BackSpace>', lambda _: obj.delete(0, 'end'))
 
-        # ███████
+        # 〉〉〉〉〉〉〉〉〉〉〉〉〉〉
         # SCREENS
-        class Screen(ctk.CTkFrame):  # Base abstract class
-            def __init__(self, master):
-                super().__init__(master, GUI.WIDTH, GUI.HEIGHT, 0, fg_color='#FBFBFB')
-                self.footer = GUI.Footer(self)
-                self.footer.place(x=0, y=GUI.HEIGHT - 40)  # Footer
-
-        class MainScreen(Screen):
+        class MainScreen(self.Screen):
             def __init__(self, master):
                 manager = master.manager  # So it can be accessed anywhere
 
                 # Local Components
                 class Services(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
                     class Service(ctk.CTkFrame):
+                        class Account(ctk.CTkFrame):
+                            def __init__(self, master):
+                                super().__init__(master, 300, 82, 5, fg_color="#FFFFFF")
+                        
                         def __init__(self, master, accounts: dict, name: str = None):
                             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                             super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
@@ -260,31 +268,44 @@ class GUI(ctk.CTk):
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
                             self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
-                                                        hover_color="#EAEAEA", text='', command=self.toggle_dropdown,
+                                                        hover_color="#EAEAEA", text='', command=self.__toggle_dropdown,
                                                         image=ctk.CTkImage(self.img, size=(20, 20)))
                             self.label = ctk.CTkEntry(self, 160, 20, 0, 0, text_color='#3D3D3D', font=(JB, 20),
                                                       fg_color='transparent', validate='key',
                                                       validatecommand=(self.register(
                                                           lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
-                            # Bindings
-                            def double(_):
-                                master.double = True
-                                self.label.focus_set()
-                            self.bind('<Double-Button-1>', double)
-                            # import pyautogui
-                            # self.after(1000, lambda: (pyautogui.click(*self.winfo_pointerxy()), self.after(400, lambda: pyautogui.click(*self.winfo_pointerxy()))))
-                            self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
-                            self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
-                            self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'),
-                                                             self.error.place_forget())
-                            ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', self.clear_err)
-                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                            # Service name error handling
+                            # Dropdown objects
+                            self.delete = ctk.CTkButton(self, 0, 12, 5, 0, fg_color='transparent',
+                                                        text='Delete service', text_color='#CC0202', font=(JB, 12),
+                                                        hover_color='#EAEAEA', image=
+                                                        ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
+                                                        command=self.__deletion_confirmation, border_color='#CC0202')
+                            self.add_acc = ctk.CTkButton(self, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
+                                                         text=
+                                                         f'Add{" another" if len(self.accounts) > 0 else ""} account',
+                                                         font=(JB, 14), hover_color="#5BCA37", command=self.__add_acc)
 
                             def error():
                                 self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
                             self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121',
                                                       font=(JB, 12), fg_color='transparent')
+
+                            # BINDINGS
+                            def del_reset(_):  # Wrapper for resetting deletion step upon hovering off
+                                self.delete.configure(border_width=0, text='Delete service')
+                                self.delete_step = False
+                            self.delete.bind('<Leave>', del_reset),
+
+                            def double(_):
+                                master.double = True
+                                self.label.focus_set()
+                            self.bind('<Double-Button-1>', double)
+
+                            self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
+                            self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
+                            self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'),
+                                                             self.error.place_forget())
+                            ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', self.clear_err)
 
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             def default():
@@ -294,10 +315,13 @@ class GUI(ctk.CTk):
                                         try:
                                             manager.rename_service(self.name, new)
                                             self.name = new
+                                            if q := search.query.get():  # Search query active
+                                                self.master.query(q)
                                             services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
                                         except ValueError:  # Conflicting
                                             error()
                                 self.label.bind('<KeyRelease-Return>', rename)  # ENTER to rename service
+                            # --
                             if name:  # Name is provided
                                 self.label.insert(0, name), default()
                             else:  # Add new service
@@ -317,46 +341,47 @@ class GUI(ctk.CTk):
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
                             self.button.place(x=4, y=8), self.label.place(x=30, y=8)
 
-                        def toggle_dropdown(self):
-                            def deletion_confirmation():
-                                if not self.delete_step:
-                                    delete.configure(border_width=1, text='Confirm deletion')
-                                    self.delete_step = True
-                                else:
-                                    manager.delete_service(self.name)
-                                    self.grid_forget(), self.master.service_objects.remove(self)
-                                    if len(_s := manager.get_services()) == 1:  # Only one service, clear search query
-                                        search.query.delete(0, 'end'), self.master.query()
-                                    if not len(_s):  # No services at all
-                                        self.master.special_message(self.master.no_services, True, '#40ACE3')
-                                    elif q := search.query.get():  # Enough services, check for results
-                                        self.master.query(q)
-                                    # Check if # of services allows search to be enabled
-                                    search.state_check(_s)
-                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                        def __toggle_dropdown(self):
                             if self.dropdown:  # Collapse dropdown
                                 # Reset everything
                                 self.configure(height=45)
                                 self.button.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
                             else:  # Make dropdown
-                                # Make the frames new height: (# of accounts * 82) + 70
-                                self.configure(height=(height := 115 + (len(self.accounts) * 82)))
+                                # Make the frames new height: 115 + (# of accounts * (82 + 3px Y padding))
+                                self.configure(height=(height := 115 + (len(self.accounts) * 85)))
                                 self.button.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
-                                delete = ctk.CTkButton(self, 0, 12, 5, 0, fg_color='transparent', text='Delete service',
-                                                text_color='#CC0202', font=(JB, 12), hover_color='#EAEAEA',
-                                                image=ctk.CTkImage(Image.open(f'{PATH}delete.png'), size=(12, 12)),
-                                                command=deletion_confirmation, border_color='#CC0202')
-                                def w(_):  # Wrapper for resetting deletion step upon hovering off
-                                    delete.configure(border_width=0, text='Delete service')
-                                    self.delete_step = False
-                                delete.bind('<Leave>', w), delete.place(x=8, y=height - 34)
-                                # Add new account button
-                                ctk.CTkButton(self, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
-                                                text=f'Add{" another" if len(self.accounts) > 0 else ""} account',
-                                                font=(JB, 14), hover_color="#5BCA37"
-                                                ).grid(row=1, column=0, padx=45, pady=(45, 0))
+                                self.delete.place(x=8, y=height - 34)
+                                # Needs 44px of Y padding, so instead of changing it on every update to the first row
+                                # item, just have 0x0px frame in row 0 with the necessary Y padding
+                                ctk.CTkFrame(self, 0, 0).grid(row=0, pady=(44, 0))
+                                self.add_acc.grid(row=len(manager.get_services()[self.name]) + 1, column=0, padx=45)
                             # --
                             self.dropdown = not self.dropdown
+
+                        def __add_acc(self):
+                            # Shift add account button
+                            self.add_acc.grid_configure(row=(c := self.add_acc.grid_info()['row']) + 1)
+                            # Change height to accommodate new account + move delete button to bottom
+                            self.configure(height=(height := self.winfo_height() + 85))  # 82 + 3px Y padding
+                            self.delete.place_configure(y=height - 34)
+                            # --
+                            self.Account(self).grid(row=c, pady=(0, 3))  # Place at prior row
+
+                        def __deletion_confirmation(self):
+                            if not self.delete_step:
+                                self.delete.configure(border_width=1, text='Confirm deletion')
+                                self.delete_step = True
+                            else:
+                                manager.delete_service(self.name)
+                                self.grid_forget(), self.master.service_objects.remove(self)
+                                if len(_s := manager.get_services()) == 1:  # Only one service, clear search query
+                                    search.query.delete(0, 'end'), self.master.query()
+                                if not len(_s):  # No services at all
+                                    self.master.special_message(self.master.no_services, True, '#40ACE3')
+                                elif q := search.query.get():  # Enough services, check for results
+                                    self.master.query(q)
+                                # Check if # of services allows search to be enabled
+                                search.state_check(_s)
 
                         def handle_change(self, change_focus: bool):
                             if self.name:  # Reset
@@ -544,7 +569,7 @@ class GUI(ctk.CTk):
                               command=lambda: switch_screen(LoginScreen(master, True, self), True),
                               image=ctk.CTkImage(Image.open(f'{PATH}edit.png'), size=(16, 16))).place(x=0, y=GUI.HEIGHT - 80)
 
-        class LoginScreen(Screen):
+        class LoginScreen(self.Screen):
             class Content(ctk.CTkFrame):  # Separate frame to keep it vertically centered
                 # noinspection PyMethodParameters
                 # self is _self here so switch_screen() can access parent CTk
@@ -612,6 +637,7 @@ class GUI(ctk.CTk):
 
             def __init__(self, master, new: bool, change: MainScreen = None):
                 super().__init__(master), self.grid_propagate(False), self.grid_anchor('center')
+                self.change = change  # Class attribute so inactivity timer can determine change status
                 # Stripes background
                 ctk.CTkLabel(self, text='', image=ctk.CTkImage(Image.open(f'{PATH}stripes.png'),
                                                                size=(GUI.WIDTH, GUI.HEIGHT))).pack()
@@ -653,6 +679,32 @@ class GUI(ctk.CTk):
                     self.after(1, listen)
                 except (Exception,):
                     pass
+
+        # 〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉
+        # Inactivity system for the MainScreen, so it will switch back to the login screen if there has
+        # been no mouse motion, button presses or key presses for a certain period
+        # (inside __init__ so it can access and change between screens)
+        def inactivity_bindings():
+            def r():  # Destroy reset + interrupt timer wrapper
+                self.timer = 0
+            self.bind_all('<Motion>', lambda _: r(), '+')
+            self.bind_all('<Button>', lambda _: r(), '+')
+            self.bind_all('<KeyPress>', lambda _: r(), '+')
+
+        def inactivity_timer():
+            change = None
+            # Only process timer if screen is MainScreen or LoginScreen for changing password
+            if isinstance(self.current_screen, MainScreen) or (change := self.current_screen.change):
+                if -1 < self.timer < INACTIVITY_PERIOD:
+                    self.timer += 1
+                elif self.timer == INACTIVITY_PERIOD:  # Execute timeout function
+                    self.timer = -1  # Stop timer
+                    # noinspection PyUnresolvedReferences
+                    del self.manager  # Remove manager instance
+                    if change:  # If in the LoginScreen for changing password, delete the preserved MainScreen
+                        change.destroy()
+                    switch_screen(LoginScreen(self, False))
+            self.after(1000, inactivity_timer)
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         super().__init__(fg_color='#FBFBFB')
         # ctk.set_appearance_mode("dark")
@@ -664,6 +716,8 @@ class GUI(ctk.CTk):
         self.current_screen = LoginScreen(self, not os_path.exists(DATA_PATH))
         self.current_screen.place(x=0, y=0)
         # --
+        self.timer = 0
+        inactivity_bindings(), inactivity_timer()
         self.mainloop()
 
 
