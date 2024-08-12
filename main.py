@@ -261,33 +261,56 @@ class GUI(ctk.CTk):
                             def __init__(self, master, username: str = None, password: str = None):
                                 super().__init__(master, 300, 82, 5, fg_color="#FFFFFF")
                                 self.grid_propagate(False)
+                                self.username, self.password = username, password
                                 self.show = ctk.CTkImage(Image.open(f'{PATH}show.png'), size=(20, 20))
                                 self.hide = ctk.CTkImage(Image.open(f'{PATH}hide.png'), size=(20, 20))
-                                self.username_obj = ctk.CTkEntry(self, 220, 25, 0, 0, text_color='#2A295E', font=(JB, 20),
-                                                                fg_color='transparent', validate='key',
-                                                                validatecommand=(self.register(
-                                                                 lambda t: len(t) <= MAX_USER_LENGTH), '%P'))
-                                self.password_obj = ctk.CTkEntry(self, 220, 25, 0, 0, text_color='#0E0D2C', font=(JBB, 20),
+                                # Username + password entries
+                                self.username_obj = ctk.CTkEntry(self, 250, 25, 0, 0, text_color='#2A295E', font=(JB, 20),
                                                                  fg_color='transparent', validate='key',
                                                                  validatecommand=(self.register(
-                                                                 lambda t: len(t) <= 100), '%P'))
-                                (visibility := ctk.CTkButton(self, anchor='w', fg_color='#FFFFFF', hover_color="#FFFFFF", text='', 
-                                              command=lambda: (
-                                                  (self.password_obj.configure(show=''), visibility.configure(image=self.show))
-                                                  if self.password_obj.cget('show') else
-                                                  (self.password_obj.configure(show='*'), visibility.configure(image=self.hide))
-                                              ), image=self.show)).grid(row=1, column=1, padx=(32, 0), pady=(5, 0))
-                                ctk.CTkButton(self, anchor='w', fg_color='#FFFFFF', hover_color="#FFFFFF", text='', 
-                                              image=ctk.CTkImage(Image.open(f'{PATH}garbage.png'), size=(18, 18))
-                                              ).grid(row=0, column=1, padx=(34, 0), pady=(8, 0))
+                                                                     lambda t: len(t) <= MAX_USER_LENGTH), '%P'))
+                                self.password_obj = ctk.CTkEntry(self, 250, 25, 0, 0, text_color='#0E0D2C',
+                                                                 font=(JBB, 20), fg_color='transparent', validate='key',
+                                                                 validatecommand=(self.register(
+                                                                     lambda t: len(t) <= 100), '%P'))
+                                # Buttons
+                                (visibility := ctk.CTkButton(self, 20, 20, anchor='w', fg_color='#FFFFFF', text='',
+                                                             hover_color="#FFFFFF", command=lambda: (
+                                    (self.password_obj.configure(show=''), visibility.configure(image=self.show))
+                                    if self.password_obj.cget('show') else
+                                    (self.password_obj.configure(show='*'), visibility.configure(image=self.hide))
+                                ), image=self.show)).grid(row=1, column=1, sticky='w', padx=(2, 0), pady=(5, 0))
+                                ctk.CTkButton(self, 18, 18, anchor='w', fg_color='#FFFFFF', hover_color="#FFFFFF",
+                                              text='', image=ctk.CTkImage(Image.open(f'{PATH}garbage.png'),
+                                                                          size=(18, 18))
+                                              ).grid(row=0, column=1, padx=(3, 0), pady=(10, 0))
+                                # BINDINGS
+                                for o, v in {(self.username_obj, self.username), (self.password_obj, self.password)}:
+                                    o.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True, o, v))
+                                    o.bind('<FocusOut>',
+                                           # FINISH THIS - allow focusing between entries
+                                           lambda e: (self.handle_change(False, o, v), print(e.widget))
+                                           if '.!account.' not in str(e.widget) else print(e.widget))
+                                    ctrl_backspace_bind(o)
                                 # --
                                 self.username_obj.grid(row=0, column=0, padx=(5, 0), pady=(11, 0))
                                 self.password_obj.grid(row=1, column=0, padx=(5, 0), pady=(4, 0))
-                        
+
+                            def handle_change(self, change_focus: bool, obj: ctk.CTkEntry, value):
+                                if self.username:  # Reset
+                                    if change_focus:
+                                        self.focus_set()  # Remove focus from entry
+                                    obj.delete(0, 'end'), obj.insert(0, value)
+                                else:  # Remove unconfirmed service
+                                    self.master.adding = False
+                                    self.master.add_acc.configure(state='normal')
+                                    self.destroy(), self.master.shift_accounts(-1, False)
+
                         def __init__(self, master, accounts: dict, name: str = None):
                             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                             super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
+                            self.adding = False  # For adding accounts
                             self.name, self.delete_step, self.dropdown, self.accounts = name, False, False, accounts
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
@@ -307,7 +330,8 @@ class GUI(ctk.CTk):
                             self.add_acc = ctk.CTkButton(self, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
                                                          text=
                                                          f'Add{" another" if len(self.accounts) > 0 else ""} account',
-                                                         font=(JB, 14), hover_color="#5BCA37", command=self.__add_acc)
+                                                         font=(JB, 14), hover_color="#5BCA37", command=self.__add_acc,
+                                                         text_color_disabled='#FFFFFF')
 
                             def error():
                                 self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
@@ -383,13 +407,20 @@ class GUI(ctk.CTk):
                             self.dropdown = not self.dropdown
 
                         def __add_acc(self):
+                            if not self.adding:
+                                self.adding = True
+                                self.add_acc.configure(state='disabled')
+                                # Place at prior row
+                                (a := self.Account(self)).grid(row=self.shift_accounts(1, True), pady=(0, 3))
+                                a.username_obj.focus_set()
+
+                        def shift_accounts(self, row: int, add_height: bool) -> int:  # Returns prior row
                             # Shift add account button
-                            self.add_acc.grid_configure(row=(c := self.add_acc.grid_info()['row']) + 1)
-                            # Change height to accommodate new account + move delete button to bottom
-                            self.configure(height=(height := self.winfo_height() + 85))  # 82 + 3px Y padding
+                            self.add_acc.grid_configure(row=(c := self.add_acc.grid_info()['row']) + row)
+                            # 82 + 3px Y padding
+                            self.configure(height=(height := self.winfo_height() + (85 if add_height else -85)))
                             self.delete.place_configure(y=height - 34)
-                            # --
-                            self.Account(self).grid(row=c, pady=(0, 3))  # Place at prior row
+                            return c
 
                         def __deletion_confirmation(self):
                             if not self.delete_step:
@@ -416,7 +447,7 @@ class GUI(ctk.CTk):
                                 self.label.delete(0, 'end'), self.label.insert(0, self.name)
                             else:  # Remove unconfirmed service
                                 try:
-                                    self.grid_forget(), self.master.service_objects.remove(self)
+                                    self.destroy(), self.master.service_objects.remove(self)
                                     if not len(manager.get_services()):  # Place no services message
                                         self.master.special_message(self.master.no_services, True, '#40ACE3')
                                     self.master.adding = False
