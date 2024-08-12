@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 12/08/2024
+    - Jensen Trillo, Version pre-1.0, 13/08/2024
 
     - ``Python 3.11.6``
 
@@ -32,6 +32,7 @@ DATA_PATH = 'data.json'
 MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
 MAX_SERVICE_LENGTH = 12
+MAX_USER_LENGTH = 16
 INACTIVITY_PERIOD = 120  # In Seconds
 
 
@@ -257,8 +258,31 @@ class GUI(ctk.CTk):
                 class Services(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
                     class Service(ctk.CTkFrame):
                         class Account(ctk.CTkFrame):
-                            def __init__(self, master):
+                            def __init__(self, master, username: str = None, password: str = None):
                                 super().__init__(master, 300, 82, 5, fg_color="#FFFFFF")
+                                self.grid_propagate(False)
+                                self.show = ctk.CTkImage(Image.open(f'{PATH}show.png'), size=(20, 20))
+                                self.hide = ctk.CTkImage(Image.open(f'{PATH}hide.png'), size=(20, 20))
+                                self.username_obj = ctk.CTkEntry(self, 220, 25, 0, 0, text_color='#2A295E', font=(JB, 20),
+                                                                fg_color='transparent', validate='key',
+                                                                validatecommand=(self.register(
+                                                                 lambda t: len(t) <= MAX_USER_LENGTH), '%P'))
+                                self.password_obj = ctk.CTkEntry(self, 220, 25, 0, 0, text_color='#0E0D2C', font=(JBB, 20),
+                                                                 fg_color='transparent', validate='key',
+                                                                 validatecommand=(self.register(
+                                                                 lambda t: len(t) <= 100), '%P'))
+                                (visibility := ctk.CTkButton(self, anchor='w', fg_color='#FFFFFF', hover_color="#FFFFFF", text='', 
+                                              command=lambda: (
+                                                  (self.password_obj.configure(show=''), visibility.configure(image=self.show))
+                                                  if self.password_obj.cget('show') else
+                                                  (self.password_obj.configure(show='*'), visibility.configure(image=self.hide))
+                                              ), image=self.show)).grid(row=1, column=1, padx=(32, 0), pady=(5, 0))
+                                ctk.CTkButton(self, anchor='w', fg_color='#FFFFFF', hover_color="#FFFFFF", text='', 
+                                              image=ctk.CTkImage(Image.open(f'{PATH}garbage.png'), size=(18, 18))
+                                              ).grid(row=0, column=1, padx=(34, 0), pady=(8, 0))
+                                # --
+                                self.username_obj.grid(row=0, column=0, padx=(5, 0), pady=(11, 0))
+                                self.password_obj.grid(row=1, column=0, padx=(5, 0), pady=(4, 0))
                         
                         def __init__(self, master, accounts: dict, name: str = None):
                             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -354,7 +378,7 @@ class GUI(ctk.CTk):
                                 # Needs 44px of Y padding, so instead of changing it on every update to the first row
                                 # item, just have 0x0px frame in row 0 with the necessary Y padding
                                 ctk.CTkFrame(self, 0, 0).grid(row=0, pady=(44, 0))
-                                self.add_acc.grid(row=len(manager.get_services()[self.name]) + 1, column=0, padx=45)
+                                self.add_acc.grid(row=len(manager.get_services()[self.name]) + 1, padx=45)
                             # --
                             self.dropdown = not self.dropdown
 
