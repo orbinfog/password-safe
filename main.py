@@ -259,6 +259,13 @@ class GUI(ctk.CTk):
                     class Service(ctk.CTkFrame):
                         class Account(ctk.CTkFrame):
                             def __init__(self, master, username: str = None, password: str = None):
+                                def toggle_visibility():
+                                    if not is_empty(self.password_obj.get()):
+                                        if self.password_obj.cget('show'):
+                                            self.password_obj.configure(show=''), visibility.configure(image=self.show)
+                                        else:
+                                            self.password_obj.configure(show='*'), visibility.configure(image=self.hide)
+                                # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                                 super().__init__(master, 300, 82, 5, fg_color="#FFFFFF")
                                 self.grid_propagate(False)
                                 self.username, self.password = username, password
@@ -266,48 +273,68 @@ class GUI(ctk.CTk):
                                 self.hide = ctk.CTkImage(Image.open(f'{PATH}hide.png'), size=(20, 20))
                                 # Username + password entries
                                 self.username_obj = ctk.CTkEntry(self, 250, 25, 0, 0, text_color='#2A295E', font=(JB, 20),
+                                                                 placeholder_text='Username', placeholder_text_color='#919191',
                                                                  fg_color='transparent', validate='key',
                                                                  validatecommand=(self.register(
-                                                                     lambda t: len(t) <= MAX_USER_LENGTH), '%P'))
+                                                                     lambda t: ' ' not in t and len(t) <= MAX_USER_LENGTH), '%P'))
                                 self.password_obj = ctk.CTkEntry(self, 250, 25, 0, 0, text_color='#0E0D2C',
+                                                                 placeholder_text='Password', placeholder_text_color='#919191',
                                                                  font=(JBB, 20), fg_color='transparent', validate='key',
                                                                  validatecommand=(self.register(
-                                                                     lambda t: len(t) <= 100), '%P'))
+                                                                     lambda t: ' ' not in t and len(t) <= 100), '%P'))
                                 # Buttons
                                 (visibility := ctk.CTkButton(self, 20, 20, anchor='w', fg_color='#FFFFFF', text='',
-                                                             hover_color="#FFFFFF", command=lambda: (
-                                    (self.password_obj.configure(show=''), visibility.configure(image=self.show))
-                                    if self.password_obj.cget('show') else
-                                    (self.password_obj.configure(show='*'), visibility.configure(image=self.hide))
-                                ), image=self.show)).grid(row=1, column=1, sticky='w', padx=(2, 0), pady=(5, 0))
+                                                             hover_color="#FFFFFF", command=toggle_visibility, image=self.show)
+                                                             ).grid(row=1, column=1, sticky='w', padx=(2, 0), pady=(5, 0))
                                 ctk.CTkButton(self, 18, 18, anchor='w', fg_color='#FFFFFF', hover_color="#FFFFFF",
                                               text='', image=ctk.CTkImage(Image.open(f'{PATH}garbage.png'),
                                                                           size=(18, 18))
                                               ).grid(row=0, column=1, padx=(3, 0), pady=(10, 0))
+
                                 # BINDINGS
-                                for o, v in {(self.username_obj, self.username), (self.password_obj, self.password)}:
+                                for o, v in {(self.username_obj, True), (self.password_obj, False)}:
                                     o.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True, o, v))
                                     o.bind('<FocusOut>',
-                                           # FINISH THIS - allow focusing between entries
-                                           lambda e: (self.handle_change(False, o, v), print(e.widget))
-                                           if '.!account.' not in str(e.widget) else print(e.widget))
+                                           # Allows focusing between entries
+                                           lambda e: self.handle_change(False, o, v)
+                                           if '.!account' not in str(self.focus_get()) else None)
                                     ctrl_backspace_bind(o)
+                                    o.bind('<KeyRelease-Return>', lambda _: self.__handle_editing(o, v))
                                 # --
                                 self.username_obj.grid(row=0, column=0, padx=(5, 0), pady=(11, 0))
                                 self.password_obj.grid(row=1, column=0, padx=(5, 0), pady=(4, 0))
 
-                            def handle_change(self, change_focus: bool, obj: ctk.CTkEntry, value):
+                            def __handle_editing(self, obj: ctk.CTkEntry = None, username: bool = True):
+                                if self.username:  # Pressed ENTER to change
+                                    # Different name and not empty
+                                    if (self.username if username else self.password) != (new := obj.get()) and \
+                                            not is_empty(new):
+                                        try:
+                                            manager.edit_account(self.master.name, self.username, username, new)
+                                            if username:
+                                                self.username = new
+                                            else:
+                                                self.password = new
+                                        except ValueError:  # Conflicting username
+                                            pass
+                                # In the process of adding a new account
+                                # If both username and password are set, then create the account in the Manager
+                                elif all(not is_empty(x) for x in {self.username_obj.get(), self.password_obj.get()}):
+                                    self.username, self.password = self.username_obj.get(), self.password_obj.get()
+                                    manager.add_account(self.master.name, self.username, self.password)
+
+                            def handle_change(self, change_focus: bool, obj: ctk.CTkEntry = None, username: bool = True):
                                 if self.username:  # Reset
                                     if change_focus:
                                         self.focus_set()  # Remove focus from entry
-                                    obj.delete(0, 'end'), obj.insert(0, value)
-                                else:  # Remove unconfirmed service
+                                    obj.delete(0, 'end'), obj.insert(0, self.username if username else self.password)
+                                # Remove service if either username or password are empty
+                                elif any(is_empty(x) for x in {self.username_obj.get(), self.password_obj.get()}):
                                     self.master.adding = False
                                     self.master.add_acc.configure(state='normal')
                                     self.destroy(), self.master.shift_accounts(-1, False)
 
                         def __init__(self, master, accounts: dict, name: str = None):
-                            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                             super().__init__(master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
                             self.adding = False  # For adding accounts
@@ -402,6 +429,9 @@ class GUI(ctk.CTk):
                                 # Needs 44px of Y padding, so instead of changing it on every update to the first row
                                 # item, just have 0x0px frame in row 0 with the necessary Y padding
                                 ctk.CTkFrame(self, 0, 0).grid(row=0, pady=(44, 0))
+                                # for i, (username, password) in enumerate(manager.get_services()[self.name].items(), 1):
+                                #     # Place accounts
+                                #     self.Account(self, username, password).grid(row=i, column=0, pady=(0, 3))
                                 self.add_acc.grid(row=len(manager.get_services()[self.name]) + 1, padx=45)
                             # --
                             self.dropdown = not self.dropdown
@@ -472,7 +502,7 @@ class GUI(ctk.CTk):
                                     self.double = False
                                 # If the current focus is a Service, and the clicked widget is not the focus
                                 elif isinstance((parent := (f := self.focus_get()).master.master), self.Service
-                                              ) and e.widget != f:
+                                                ) and e.widget != f:
                                     if not parent.name:  # Currently adding service
                                         self.parent_service = None
                                         def recursive(obj):
