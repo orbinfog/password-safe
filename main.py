@@ -359,11 +359,11 @@ class GUI(ctk.CTk):
                                                          f'Add{" another" if len(self.accounts) > 0 else ""} account',
                                                          font=(JB, 14), hover_color="#5BCA37", command=self.__add_acc,
                                                          text_color_disabled='#FFFFFF')
-
-                            def error():
-                                self.label.configure(text_color='#ff3333'), self.error.place(x=254, y=8)
-                            self.error = ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121',
-                                                      font=(JB, 12), fg_color='transparent')
+                            self.error = (  # Tuple of error lambda + object
+                                lambda: (self.label.configure(text_color='#ff3333'), self.error[1].place(x=254, y=8)),
+                                ctk.CTkLabel(self, text='Conflicting name', text_color='#eb2121',
+                                             font=(JB, 12), fg_color='transparent')
+                            )
 
                             # BINDINGS
                             def del_reset(_):  # Wrapper for resetting deletion step upon hovering off
@@ -375,45 +375,20 @@ class GUI(ctk.CTk):
                                 master.double = True
                                 self.label.focus_set()
                             self.bind('<Double-Button-1>', double)
-
-                            self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True))
+                            self.label.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True, True))
                             self.label.bind('<FocusOut>', lambda _: self.handle_change(False))
                             self.clear_err = lambda _=None: (self.label.configure(text_color='#3D3D3D'),
-                                                             self.error.place_forget())
+                                                             self.error[1].place_forget())
                             ctrl_backspace_bind(self.label), self.label.bind('<KeyRelease>', self.clear_err)
-
                             # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                            def default():
-                                def rename(_):
-                                    # Different name and not empty
-                                    if self.name != (new := self.label.get()) and not is_empty(new):
-                                        try:
-                                            manager.rename_service(self.name, new)
-                                            self.name = new
-                                            if q := search.query.get():  # Search query active
-                                                self.master.query(q)
-                                            services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
-                                        except ValueError:  # Conflicting
-                                            error()
-                                self.label.bind('<KeyRelease-Return>', rename)  # ENTER to rename service
-                            # --
                             if name:  # Name is provided
-                                self.label.insert(0, name), default()
+                                self.label.insert(0, name)
+                                self.label.bind('<KeyRelease-Return>', lambda _: (self.__rename(), self.focus_set()))
                             else:  # Add new service
-                                def add(_):  # Convert into proper service box
-                                    if not is_empty(new := self.label.get()):
-                                        try:
-                                            manager.add_service(new)  # KeyError
-                                            self.label.unbind('<KeyRelease-Return>', binding)  # Remove ENTER binding
-                                            default(), self.button.configure(state='normal'), self.focus_set()
-                                            master.adding, self.name = False, new
-                                            services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
-                                            search.state_check()  # Check if # of services allows search to be enabled
-                                        except KeyError:  # Already exists
-                                            error()
                                 self.button.configure(state='disabled')
-                                binding = self.label.bind('<KeyRelease-Return>', add)  # Add service upon ENTER
-                            # ░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                                # Create service upon ENTER
+                                self.binding = self.label.bind('<KeyRelease-Return>', self.__create)
+                            # --
                             self.button.place(x=4, y=8), self.label.place(x=30, y=8)
 
                         def __toggle_dropdown(self):
@@ -444,14 +419,6 @@ class GUI(ctk.CTk):
                                 (a := self.Account(self)).grid(row=self.shift_accounts(1, True), pady=(0, 3))
                                 a.username_obj.focus_set()
 
-                        def shift_accounts(self, row: int, add_height: bool) -> int:  # Returns prior row
-                            # Shift add account button
-                            self.add_acc.grid_configure(row=(c := self.add_acc.grid_info()['row']) + row)
-                            # 82 + 3px Y padding
-                            self.configure(height=(height := self.winfo_height() + (85 if add_height else -85)))
-                            self.delete.place_configure(y=height - 34)
-                            return c
-
                         def __deletion_confirmation(self):
                             if not self.delete_step:
                                 self.delete.configure(border_width=1, text='Confirm deletion')
@@ -468,21 +435,62 @@ class GUI(ctk.CTk):
                                 # Check if # of services allows search to be enabled
                                 search.state_check(_s)
 
-                        def handle_change(self, change_focus: bool):
+                        def __rename(self, _=None):
+                            # Different name and not empty
+                            if self.name != (new := self.label.get()) and not is_empty(new):
+                                try:
+                                    manager.rename_service(self.name, new)
+                                    self.name = new
+                                    if q := search.query.get():  # Search query active
+                                        self.master.query(q)
+                                    services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
+                                except ValueError:  # Conflicting
+                                    self.error[0]()  # Error lambda
+
+                        def __create(self, _=None):  # Convert into proper service box - creates service in Manager
+                            if not is_empty(new := self.label.get()):
+                                try:
+                                    manager.add_service(new)  # KeyError
+                                    self.label.unbind('<KeyRelease-Return>', self.binding)  # Remove ENTER binding
+                                    self.label.bind('<KeyRelease-Return>', # ENTER to rename service
+                                                    lambda _: (self.__rename(), self.focus_set()))
+                                    self.button.configure(state='normal'), self.focus_set()
+                                    self.master.adding, self.name = False, new
+                                    services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
+                                    search.state_check()  # Check if # of services allows search to be enabled
+                                except KeyError:  # Already exists
+                                    self.error[0]()  # Error lambda
+
+                        def shift_accounts(self, row: int, add_height: bool) -> int:  # Returns prior row
+                            # Shift add account button
+                            self.add_acc.grid_configure(row=(c := self.add_acc.grid_info()['row']) + row)
+                            # 82 + 3px Y padding
+                            self.configure(height=(height := self.winfo_height() + (85 if add_height else -85)))
+                            self.delete.place_configure(y=height - 34)
+                            return c
+
+                        def handle_change(self, change_focus: bool, escape: bool = False):
                             if self.name:  # Reset
                                 if change_focus:
                                     self.focus_set()  # Remove focus from entry
-                                self.clear_err()
-                                # Replace with self.name
-                                self.label.delete(0, 'end'), self.label.insert(0, self.name)
-                            else:  # Remove unconfirmed service
-                                try:
-                                    self.destroy(), self.master.service_objects.remove(self)
-                                    if not len(manager.get_services()):  # Place no services message
-                                        self.master.special_message(self.master.no_services, True, '#40ACE3')
-                                    self.master.adding = False
-                                except ValueError:
-                                    pass
+                                # --
+                                if escape or is_empty(self.label.get()):  # If empty or ESC, reset
+                                    self.clear_err()
+                                    # Replace with self.name
+                                    self.label.delete(0, 'end'), self.label.insert(0, self.name)
+                                else:  # Otherwise confirm rename
+                                    self.__rename()
+                            else:  # Unconfirmed service
+                                if escape or is_empty(self.label.get()):  # If empty or ESC, remove it
+                                    try:
+                                        self.destroy(), self.master.service_objects.remove(self)
+                                        if not len(manager.get_services()):  # Place no services message
+                                            self.master.special_message(self.master.no_services, True, '#40ACE3')
+                                        self.master.adding = False
+                                    except ValueError:
+                                        pass
+                                else:  # Otherwise confirm it
+                                    self.__create()
 
                     def __init__(self, master):
                         class Start(ctk.CTkFrame):  # For when there are 0 services
@@ -498,11 +506,12 @@ class GUI(ctk.CTk):
 
                         def mouse_off(e):
                             try:
-                                if self.double:  # Allow double mouse click for setting service entry focus
+                                # Allow double mouse click for setting service entry focus
+                                if self.double:
                                     self.double = False
                                 # If the current focus is a Service, and the clicked widget is not the focus
                                 elif isinstance((parent := (f := self.focus_get()).master.master), self.Service
-                                                ) and e.widget != f:
+                                              ) and e.widget != f:
                                     if not parent.name:  # Currently adding service
                                         self.parent_service = None
                                         def recursive(obj):
