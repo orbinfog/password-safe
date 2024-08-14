@@ -304,8 +304,6 @@ class GUI(ctk.CTk):
                                 self.username_obj.grid(row=0, column=0, padx=(5, 0), pady=(11, 0))
                                 self.password_obj.grid(row=1, column=0, padx=(5, 0), pady=(4, 0))
                                 if focus:
-                                    # 1ms otherwise mouse_off() will reset it, and it is too much of a hassle to
-                                    # make the func ignore it
                                     self.username_obj.focus_set()
 
                             # noinspection PyUnresolvedReferences
