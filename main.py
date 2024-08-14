@@ -514,7 +514,7 @@ class GUI(ctk.CTk):
                                 else:  # Otherwise confirm it
                                     self.__create()
 
-                    def __init__(self, master):
+                    def __init__(self, _master):
                         class Start(ctk.CTkFrame):  # For when there are 0 services
                             def __init__(self, m):
                                 super().__init__(m, 390, 348, 0, fg_color='transparent')
@@ -529,7 +529,7 @@ class GUI(ctk.CTk):
                         def recursive(_type, obj):
                             if isinstance(obj, _type):
                                 return obj
-                            elif obj != master:
+                            elif obj != _master:
                                 return recursive(_type, obj.master)
                             else:
                                 return
@@ -562,7 +562,7 @@ class GUI(ctk.CTk):
                             except AttributeError:  # Is not Service
                                 pass
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                        super().__init__(master, 390, 350, 0, fg_color='transparent')
+                        super().__init__(_master, 390, 350, 0, fg_color='transparent')
                         self._parent_canvas.bind_all('<Button-1>', mouse_off, '+')  # For editing
                         # So border goes fully around
                         self._scrollbar.configure(bg_color=TRANS), set_opacity(self._scrollbar, color=TRANS)
@@ -779,8 +779,8 @@ class GUI(ctk.CTk):
                     set_opacity(back, color=TRANS), back.place(x=45, y=45)
                 if new:  # Label for first time startup warning user to remember password
                     length = ctk.CTkLabel(self, text=f'The password must be between {MIN_PASS_LENGTH} and '
-                                                     f'{MAX_PASS_LENGTH} characters.', font=(JB, 12), text_color='#000000',
-                                          fg_color=TRANS)
+                                                     f'{MAX_PASS_LENGTH} characters.', font=(JB, 12),
+                                          text_color='#000000', fg_color=TRANS)
                     warning = ctk.CTkLabel(self, text="WARNING: Your password cannot be reset if you forget it. This "
                                                       "could lead to permanent data loss! Ensure you keep record of "
                                                       "your password.", font=(JB, 12), wraplength=350,
