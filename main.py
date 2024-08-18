@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 14/08/2024
+    - Jensen Trillo, Version pre-1.0, 19/08/2024
 
     - ``Python 3.11.6``
 
@@ -19,6 +19,7 @@ from misc_utils import init_kill_handlers, resource_path, is_empty
 from tkinter_utils import load_fonts, set_opacity
 from os import path as os_path
 from PIL import Image, ImageEnhance
+from numpy import array as np_array
 # DO NOT TOUCH section
 __version__ = 'pre-1.0'
 PATH = resource_path('assets/')  # Absolute asset path for files/resources
@@ -32,7 +33,7 @@ DATA_PATH = 'data.json'
 MIN_PASS_LENGTH = 8
 MAX_PASS_LENGTH = 16
 MAX_SERVICE_LENGTH = 12
-MAX_USER_LENGTH = 16
+MAX_USER_LENGTH = 128
 INACTIVITY_PERIOD = 120  # In Seconds
 
 
@@ -53,12 +54,12 @@ class Manager:
         self._key = self.__derive_key(password)  # Get the encryption key using password
         self._data = self.__read()  # Read the JSON file from data path using new encryption key
         # Kill and exit handlers
-        init_kill_handlers(lambda *_: self.__write())
-        exit_register(self.__write)
+        init_kill_handlers(lambda *_: self.write())
+        exit_register(self.write)
 
     @staticmethod
     def __derive_key(password: str) -> bytes:
-        kdf = PBKDF2HMAC(hashes.SHA256(), 32,''.join(sorted(password))[::-1].encode(), 480000)
+        kdf = PBKDF2HMAC(hashes.SHA256(), 32, ''.join(sorted(password))[::-1].encode(), 480000)
         return urlsafe_b64encode(kdf.derive(password.encode()))
 
     def change_password(self, password: str):
@@ -77,7 +78,7 @@ class Manager:
         except FileNotFoundError:  # Return empty data dict
             return {}
 
-    def __write(self):
+    def write(self):
         with gzip_open(self._path, 'wb', 9) as f:
             f.write(urlsafe_b64decode(Fernet(self._key).encrypt(json_dumps(self._data).encode())))
 
@@ -91,8 +92,7 @@ class Manager:
         return {k: self._data[k] for k in sorted(self._data)}
 
     # Service methods
-    # noinspection PyDefaultArgument
-    def add_service(self, name: str, data: dict = {}):
+    def add_service(self, name: str, data):
         """
             Adds a service; the name is case-sensitive. If
             the service already exists, :class:`KeyError`
@@ -131,7 +131,7 @@ class Manager:
 
             :param name: :class:`str` Service name; `case-sensitive`
         """
-        del self._data[name]
+        self._data.pop(name)
 
     # Account methods
     def add_account(self, service: str, username: str, password: str):
@@ -246,6 +246,22 @@ class GUI(ctk.CTk):
         def ctrl_backspace_bind(obj):
             obj.bind('<Control-KeyPress-BackSpace>', lambda _: obj.delete(0, 'end'))
 
+        show = ctk.CTkImage(Image.open(f'{PATH}show.png'), size=(20, 20))
+        hide = ctk.CTkImage(Image.open(f'{PATH}hide.png'), size=(20, 20))
+
+        class Visibility(ctk.CTkButton):
+            def __init__(self, master, entry: ctk.CTkEntry, **kw):
+                super().__init__(master, height=20, fg_color=TRANS, text='', hover_color=TRANS,
+                                 command=lambda: toggle_visibility(entry, self), image=hide, **kw)
+                set_opacity(self, color=TRANS)
+
+        def toggle_visibility(entry: ctk.CTkEntry, obj: Visibility):
+            if not is_empty(entry.get()):
+                if entry.cget('show'):
+                    entry.configure(show=''), obj.configure(image=show)
+                else:
+                    entry.configure(show='*'), obj.configure(image=hide)
+
         # 〉〉〉〉〉〉〉〉〉〉〉〉〉〉
         # SCREENS
         class MainScreen(self.Screen):
@@ -255,91 +271,165 @@ class GUI(ctk.CTk):
                 # Local Components
                 class Services(ctk.CTkScrollableFrame):  # Scrollable frame for containing services and accounts
                     class Service(ctk.CTkFrame):
+                        # noinspection PyUnresolvedReferences
                         class Account(ctk.CTkFrame):
                             def __init__(self, _master, username: str = None, password: str = None,
                                          focus: bool = False):
-                                def toggle_visibility():
-                                    if not is_empty(self.password_obj.get()):
-                                        if self.password_obj.cget('show'):
-                                            self.password_obj.configure(show=''), visibility.configure(image=self.show)
-                                        else:
-                                            self.password_obj.configure(show='*'), visibility.configure(image=self.hide)
+                                # noinspection PyUnresolvedReferences
+                                class EntryObj(ctk.CTkEntry):
+                                    def __init__(self, _master, username_: bool, **kwargs):
+                                        super().__init__(_master, 240, 25, 0, 0, placeholder_text_color='#919191',
+                                                         fg_color='transparent', validate='key',
+                                                         validatecommand=_master.validation, **kwargs)
+                                        self.username_, self.binding = username_, None
+                                        self.bind('<KeyRelease-Escape>',
+                                                  lambda _: _master.handle_change(True, self, True))
+                                        self.bind('<FocusOut>',
+                                                  lambda _: _master.handle_change(False, self, focusout=True))
+                                        ctrl_backspace_bind(self)
+                                        if username:  # User & pass is provided
+                                            self.bind('<KeyRelease-Return>', lambda _:
+                                                      _master.focus_set() if _master.rename(self) else None)
+
+                                    def unconfirmed_binding(self, obj):
+                                        # Added to bindings() so they can be removed on create()
+                                        # all() in lambda otherwise it would be called twice for handle_change()
+                                        self.binding = self.bind('<KeyRelease-Return>', lambda _: (
+                                            # Create if both inputs are full
+                                            self.master.create(enter=True) if all(not is_empty(x) for x in
+                                                                                  {self.master.username_obj.get(),
+                                                                                   self.master.password_obj.get()})
+                                            # Otherwise change focus to other input if not empty or conflicting
+                                            else obj.focus_set() if (not is_empty(self.get()) and not self.master.error)
+                                            else None
+                                        ))
+
+                                    def remove_binding(self):
+                                        self.unbind('<KeyRelease-Return>', self.binding)
+                                        self.bind('<KeyRelease-Return>', lambda _: (
+                                            self.master.focus_set() if self.master.rename(self)
+                                            else None
+                                        ))
                                 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-                                super().__init__(_master, 300, 82, 5, fg_color="#FFFFFF")
-                                self.grid_propagate(False)
-                                self.username, self.password = username, password
-                                self.show = ctk.CTkImage(Image.open(f'{PATH}show.png'), size=(20, 20))
-                                self.hide = ctk.CTkImage(Image.open(f'{PATH}hide.png'), size=(20, 20))
+                                super().__init__(_master, 300, 82, 5, fg_color='#FFFFFF')
+                                self.grid_propagate(False), self.grid_anchor('center')
+                                self.username, self.password, self.error = username, password, False
+                                self.validation = (self.register(lambda t: ' ' not in t and len(t) <= MAX_USER_LENGTH),
+                                                   '%P')
+                                # IMAGES
+                                garbage = ctk.CTkImage(i := Image.open(f'{PATH}garbage.png'))
+                                garbage_h = np_array(i)
+                                garbage_h[..., :-1] = (255, 10, 10)
+                                garbage_h = ctk.CTkImage(Image.fromarray(garbage_h))
+                                # --
                                 # Username + password entries
-                                self.username_obj = ctk.CTkEntry(
-                                    self, 250, 25, 0, 0, text_color='#2A295E', font=(JB, 20),
-                                    placeholder_text='Username', placeholder_text_color='#919191', validate='key',
-                                    fg_color='transparent', validatecommand=
-                                    (self.register(lambda t: ' ' not in t and len(t) <= MAX_USER_LENGTH), '%P'))
-                                self.password_obj = ctk.CTkEntry(
-                                    self, 250, 25, 0, 0, text_color='#0E0D2C', placeholder_text='Password',
-                                    placeholder_text_color='#919191', font=(JBB, 20), fg_color='transparent',
-                                    validate='key', validatecommand=
-                                    (self.register(lambda t: ' ' not in t and len(t) <= 100), '%P'))
+                                self.username_obj = EntryObj(self, True, placeholder_text='Username',
+                                                             text_color='#2A295E', font=(JB, 20))
+                                self.password_obj = EntryObj(self, False, placeholder_text='Password',
+                                                             text_color='#0E0D2C', font=(JBB, 20), show='*')
                                 # Buttons
-                                (visibility := ctk.CTkButton(
-                                    self, 20, 20, anchor='w', fg_color='#FFFFFF', text='', hover_color="#FFFFFF",
-                                    command=toggle_visibility, image=self.show)).grid(
-                                    row=1, column=1, sticky='w', padx=(2, 0), pady=(5, 0))
-                                ctk.CTkButton(self, 18, 18, anchor='w', fg_color='#FFFFFF', hover_color="#FFFFFF",
-                                              text='', image=ctk.CTkImage(Image.open(f'{PATH}garbage.png'),
-                                                                          size=(18, 18))
-                                              ).grid(row=0, column=1, padx=(3, 0), pady=(10, 0))
+                                self.visibility = Visibility(self, self.password_obj, width=20, anchor='w')
+                                self.visibility.grid(row=1, column=1, sticky='w', padx=(12, 0))
+                                (delete := ctk.CTkButton(self, 18, 18, anchor='w', fg_color=TRANS,
+                                                         hover_color=TRANS, text='', image=garbage,
+                                                         command=lambda: (
+                                        (manager.delete_account(self.master.name, self.username), self.__delete())
+                                        if self.username else
+                                        (self.__delete(), self.master.add_acc.configure(state='normal',
+                                                                                        fg_color='#55BB33'))
+                                ))).grid(row=0, column=1, padx=(13, 0))
+                                set_opacity(delete, color=TRANS)
+                                delete.bind('<Enter>', lambda _: delete.configure(image=garbage_h))
+                                delete.bind('<Leave>', lambda _: delete.configure(image=garbage))
 
                                 # BINDINGS
-                                for o, v in {(self.username_obj, True), (self.password_obj, False)}:
-                                    o.bind('<KeyRelease-Escape>', lambda _: self.handle_change(True, o, v))
-                                    o.bind('<FocusOut>',
-                                           # Allows focusing between entries
-                                           lambda e: self.handle_change(False, o, v)
-                                           if '.!account' not in str(self.focus_get()) else None)
-                                    ctrl_backspace_bind(o)
-                                    o.bind('<KeyRelease-Return>', lambda _: self.__handle_editing(o, v))
+                                self.username_obj.bind('<KeyRelease>', self.__check_conflicting)
+                                if username:  # User & pass is provided
+                                    self.username_obj.insert(0, username), self.password_obj.insert(0, password)
+                                else:  # Bindings have to be added here
+                                    self.username_obj.unconfirmed_binding(self.password_obj)
+                                    self.password_obj.unconfirmed_binding(self.username_obj)
                                 # --
-                                self.username_obj.grid(row=0, column=0, padx=(5, 0), pady=(11, 0))
-                                self.password_obj.grid(row=1, column=0, padx=(5, 0), pady=(4, 0))
+                                self.username_obj.grid(row=0, column=0)
+                                self.password_obj.grid(row=1, column=0)
                                 if focus:
                                     self.username_obj.focus_set()
 
-                            # noinspection PyUnresolvedReferences
-                            def __handle_editing(self, obj: ctk.CTkEntry = None, username: bool = True):
-                                if self.username:  # Pressed ENTER to change
-                                    # Different name and not empty
-                                    if (self.username if username else self.password) != (new := obj.get()) and \
-                                            not is_empty(new):
-                                        try:
-                                            manager.edit_account(self.master.name, self.username, username, new)
-                                            if username:
-                                                self.username = new
-                                            else:
-                                                self.password = new
-                                        except ValueError:  # Conflicting username
-                                            pass
-                                # In the process of adding a new account
-                                # If both username and password are set, then create the account in the Manager
-                                elif all(not is_empty(x) for x in {self.username_obj.get(), self.password_obj.get()}):
-                                    self.username, self.password = self.username_obj.get(), self.password_obj.get()
-                                    self.master.add_acc.configure(text=f'Add another account')  # At least one account
-                                    manager.add_account(self.master.name, self.username, self.password)
+                            def __check_conflicting(self, _):
+                                # Conflicting name (modified from current self.username)
+                                if (self.username != (new := self.username_obj.get()) and
+                                        new in manager.get_services()[self.master.name]):
+                                    self.username_obj.configure(text_color='#ff3333')
+                                    self.error = True
+                                else:  # Clear conflicting error message
+                                    self.username_obj.configure(text_color='#2A295E')
+                                    self.error = False
 
-                            # noinspection PyUnresolvedReferences
-                            def handle_change(self, change_focus: bool, obj: ctk.CTkEntry = None,
-                                              username: bool = True):
-                                if self.username:  # Reset
+                            def __delete(self):
+                                self.master.accounts.remove(self)
+                                self.username_obj.configure(text_color='#2A295E')  # Reset error text color
+                                if not len(manager.get_services()[self.master.name]):  # Change to 'Add Account'
+                                    self.master.add_acc.configure(text=f'Add account')
+                                self.destroy(), self.master.shift_accounts(False)
+
+                            def rename(self, obj) -> bool:
+                                # Different name and not empty
+                                if ((self.username if obj.username_ else self.password) != (new := obj.get()) and
+                                        not is_empty(new)):
+                                    try:
+                                        manager.edit_account(self.master.name, self.username, obj.username_, new)
+                                        if obj.username_:
+                                            self.username = new
+                                        else:
+                                            self.password = new
+                                    except ValueError:  # Conflicting username
+                                        # Error handled in __check_conflicting
+                                        return False
+                                return True  # return for ENTER bind
+
+                            # Convert into proper account - creates in Manager
+                            def create(self, focus: bool = True, enter: bool = False):
+                                if not self.error:  # No conflicting username
+                                    self.username, self.password = self.username_obj.get(), self.password_obj.get()
+                                    self.master.add_acc.configure(state='normal', fg_color='#55BB33',
+                                                                  text=f'Add another account')  # >=1 account
+                                    manager.add_account(self.master.name, self.username, self.password)
+                                    # Change bindings
+                                    self.username_obj.remove_binding(), self.password_obj.remove_binding()
+                                    if focus:
+                                        self.focus_set()
+                                elif enter:
+                                    self.username_obj.focus_set()
+
+                            def handle_change(self, change_focus: bool, obj, escape: bool = False,
+                                              focusout: bool = False):
+                                if self.username:
+                                    obj.xview_moveto(0)  # Move to X=0
                                     if change_focus:
                                         self.focus_set()  # Remove focus from entry
-                                    obj.delete(0, 'end'), obj.insert(0, self.username if username else self.password)
-                                # Remove service if either username or password are empty
-                                elif any(is_empty(x) for x in {self.username_obj.get(), self.password_obj.get()}):
+                                    # If ESC, conflicting name or empty, reset
+                                    if escape or self.error or is_empty(obj.get()):
+                                        self.username_obj.configure(text_color='#2A295E')  # Reset error text color
+                                        # Replace text
+                                        obj.delete(0, 'end')
+                                        obj.insert(0, self.username if obj.username_ else self.password)
+                                    else:  # Otherwise confirm rename
+                                        self.rename(obj)
+                                # Remove service if either username or password are empty or ESC or conflicting username
+                                # (when in unconfirmed state)
+                                elif (any(is_empty(x) for x in {self.username_obj.get(), self.password_obj.get()}) or
+                                      escape or self.error):
+                                    # Cancel event if not confirmed so focus between entries is allowed
+                                    if focusout and str(self) in str(self.focus_get()):
+                                        return
                                     self.master.add_acc.configure(state='normal', fg_color='#55BB33')
-                                    if not len(manager.get_services()[self.master.name]):  # Change to 'Add Account'
-                                        self.master.add_acc.configure(text=f'Add account')
-                                    self.destroy(), self.master.shift_accounts(-1, False)
+                                    self.__delete()
+                                # Save account once user and password
+                                else:
+                                    # Allow focus between entries without confirming
+                                    if focusout and str(self) in str(self.focus_get()):
+                                        return
+                                    self.create(not focusout)  # Set focus if not FOCUSOUT
 
                         def __init__(self, _master, accounts: dict, name: str = None):
                             # Has to be own class for its identifying name in mouse_off()
@@ -352,7 +442,8 @@ class GUI(ctk.CTk):
                             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                             super().__init__(_master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
-                            self.name, self.delete_step, self.dropdown = name, False, False
+                            self.name, self.delete_step, self.dropdown, self.f_dropdown = name, False, False, True
+                            self.accounts = []  # List of Account objects
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
                             self.button = ctk.CTkButton(self, anchor='w', fg_color='#EAEAEA',
@@ -370,10 +461,9 @@ class GUI(ctk.CTk):
                                                         command=self.__deletion_confirmation, border_color='#CC0202')
                             self.add_acc = AddAccount(self)
                             self.error = (  # Tuple of error lambda, clear error lambda & object
-                                lambda: (self.label.configure(text_color='#ff3333'), self.error[2].place(x=268, y=8)),
+                                lambda o, f, x, y: (o.configure(text_color='#ff3333'), self.error[2].place(x=268, y=8)),
                                 lambda: (self.label.configure(text_color='#3D3D3D'), self.error[2].place_forget()),
-                                ctk.CTkLabel(self, text='Already exists', text_color='#eb2121',
-                                             font=(JB, 12), fg_color='transparent')
+                                ctk.CTkLabel(self, text='Already exists', text_color='#eb2121', font=(JB, 12))
                             )
 
                             # BINDINGS
@@ -394,6 +484,7 @@ class GUI(ctk.CTk):
                                 self.label.insert(0, name)
                                 self.label.bind('<KeyRelease-Return>',
                                                 lambda _: self.focus_set() if self.__rename() else None)
+
                             else:  # Add new service
                                 self.button.configure(state='disabled')
                                 # Create service upon ENTER
@@ -403,21 +494,29 @@ class GUI(ctk.CTk):
 
                         def __toggle_dropdown(self):
                             if self.dropdown:  # Collapse dropdown
-                                # Reset everything
-                                self.configure(height=45)
-                                self.button.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
+                                for o in self.accounts:  # Hide all account passwords
+                                    o.password_obj.configure(show='*'), o.visibility.configure(image=hide)
+                                # Reset everything after 1ms, so that if you have an unconfirmed service,
+                                # it can be handled first
+                                self.after(1, lambda: (
+                                    self.configure(height=45),
+                                    self.button.configure(image=ctk.CTkImage(self.img, size=(20, 20)))
+                                ))
                             else:  # Make dropdown
                                 self.configure(  # Make the frames height: 115 + (# of accounts * (82 + 3px Y padding))
                                     height=(height := 115 + ((l := len(manager.get_services()[self.name])) * 85)))
                                 self.button.configure(image=ctk.CTkImage(self.img.rotate(270), size=(20, 20)))
                                 self.delete.place(x=8, y=height - 34)
-                                # Needs 44px of Y padding, so instead of changing it on every update to the first row
-                                # item, just have 0x0px frame in row 0 with the necessary Y padding
-                                ctk.CTkFrame(self, 0, 0).grid(row=0, pady=(44, 0))
-                                # for i, (username, password) in enumerate(manager.get_services()[self.name].items(), 1):
-                                #     # Place accounts
-                                #     self.Account(self, username, password).grid(row=i, column=0, pady=(0, 3))
-                                self.add_acc.grid(row=l + 1, padx=45)
+                                if self.f_dropdown:  # Create only on first time
+                                    self.f_dropdown = False
+                                    # Needs 44px of Y padding, so instead of changing it on every update to the first
+                                    # row item, just have 0x0px frame in row 0 with the necessary Y padding
+                                    ctk.CTkFrame(self, 0, 0).grid(row=0, pady=(44, 0))
+                                    for i, (username, password) in (  # Place accounts
+                                            enumerate(manager.get_services()[self.name].items(), 1)):
+                                        self.accounts.append((o := self.Account(self, username, password)))
+                                        o.grid(row=i, column=0, pady=(0, 3))
+                                    self.add_acc.grid(row=l + 1, padx=45)
                             # --
                             self.dropdown = not self.dropdown
 
@@ -428,22 +527,24 @@ class GUI(ctk.CTk):
                                 self.delete_step = True
                             else:
                                 manager.delete_service(self.name)
-                                self.grid_forget(), self.master.service_objects.remove(self)
+                                self.destroy(), self.master.service_objects.remove(self)
                                 if len(_s := manager.get_services()) == 1:  # Only one service, clear search query
                                     search.query.delete(0, 'end'), self.master.query()
                                 if not len(_s):  # No services at all
                                     self.master.special_message(self.master.no_services, True, '#40ACE3')
                                 elif q := search.query.get():  # Enough services, check for results
+                                    # Has to redo query in case the deleted service is the only one left,
+                                    # so that query can place 'No Results' msg
                                     self.master.query(q)
-                                # Check if # of services allows search to be enabled
-                                search.state_check(_s)
+                                # self.master._parent_canvas.yview_moveto(v)
+                                search.state_check(_s)  # Check if # of services allows search to be enabled
 
                         def __check_conflicting(self, _):
                             # Conflicting name (modified from current self.name)
                             if self.name != (new := self.label.get()) and new in manager.get_services():
-                                self.error[0]()  # Error lambda
+                                self.error[0](self.label, '#EAEAEA', 268, 8)  # Error lambda
                             else:  # Clear conflicting error message
-                                self.error[1]()  # Clear err lambda
+                                self.error[1](self.label, '#3D3D3D')  # Clear err lambda
 
                         # noinspection PyUnresolvedReferences
                         def __rename(self, _=None) -> bool:
@@ -460,10 +561,10 @@ class GUI(ctk.CTk):
                                     return False
                             return True  # return for ENTER bind
 
-                        def __create(self, _=None):  # Convert into proper service box - creates service in Manager
+                        def __create(self, _=None) -> bool:  # Convert into confirmed service - creates in Manager
                             if not is_empty(new := self.label.get()):
                                 try:
-                                    manager.add_service(new)  # KeyError
+                                    manager.add_service(new, {})  # KeyError
                                     self.label.unbind('<KeyRelease-Return>', self.binding)  # Remove ENTER binding
                                     self.label.bind('<KeyRelease-Return>',  # ENTER to rename service
                                                     lambda _: self.focus_set() if self.__rename() else None)
@@ -472,20 +573,21 @@ class GUI(ctk.CTk):
                                     services.sort(sorting.cget('text') != 'A-Z')  # Re-sort the order
                                     search.state_check()  # Check if # of services allows search to be enabled
                                 except KeyError:  # Already exists
-                                    self.error[0]()  # Error lambda
+                                    return True
 
                         def add_acc(self):
                             self.add_acc.configure(state='disabled', fg_color='#b0b0b0')
-                            # Place at prior row
-                            self.Account(self, focus=True).grid(row=self.shift_accounts(1, True), pady=(0, 3))
+                            self.accounts.append(self.Account(self, focus=True))
+                            self.shift_accounts(True)
 
-                        def shift_accounts(self, row: int, add_height: bool) -> int:  # Returns prior row
-                            # Shift add account button
-                            self.add_acc.grid_configure(row=(c := self.add_acc.grid_info()['row']) + row)
+                        def shift_accounts(self, add: bool):
+                            # Shift objects
+                            for i, o in enumerate(self.accounts, 1):
+                                o.grid_configure(row=i, pady=(0, 3))
+                            self.add_acc.grid_configure(row=len(self.accounts) + 1)
                             # 82 + 3px Y padding
-                            self.configure(height=(height := self.winfo_height() + (85 if add_height else -85)))
+                            self.configure(height=(height := self.winfo_height() + (85 if add else -85)))
                             self.delete.place_configure(y=height - 34)
-                            return c
 
                         # noinspection PyUnresolvedReferences
                         def handle_change(self, change_focus: bool, escape: bool = False):
@@ -493,24 +595,27 @@ class GUI(ctk.CTk):
                                 if change_focus:
                                     self.focus_set()  # Remove focus from entry
                                 # --
-                                # If empty, conflicting name or ESC, reset
+                                # If ESC, conflicting name or empty, reset
                                 if escape or self.error[2].winfo_ismapped() or is_empty(self.label.get()):
-                                    self.error[1]()  # Clear err lambda
+                                    self.error[1](self.label, '#3D3D3D')  # Clear err lambda
                                     # Replace with self.name
                                     self.label.delete(0, 'end'), self.label.insert(0, self.name)
                                 else:  # Otherwise confirm rename
                                     self.__rename()
                             else:  # Unconfirmed service
                                 if escape or is_empty(self.label.get()):  # If empty or ESC, remove it
-                                    try:
-                                        self.destroy(), self.master.service_objects.remove(self)
-                                        if not len(manager.get_services()):  # Place no services message
-                                            self.master.special_message(self.master.no_services, True, '#40ACE3')
-                                        self.master.adding = False
-                                    except ValueError:
-                                        pass
+                                    pass  # Go to removing
                                 else:  # Otherwise confirm it
-                                    self.__create()
+                                    if not self.__create():  # If not conflicting
+                                        return  # Return before removing
+                                # --
+                                try:
+                                    self.destroy(), self.master.service_objects.remove(self)
+                                    if not len(manager.get_services()):  # Place no services message
+                                        self.master.special_message(self.master.no_services, True, '#40ACE3')
+                                    self.master.adding = False
+                                except ValueError:
+                                    pass
 
                     def __init__(self, _master):
                         class Start(ctk.CTkFrame):  # For when there are 0 services
@@ -523,45 +628,8 @@ class GUI(ctk.CTk):
                                               text=f'Add service', font=(JB, 14), hover_color="#5BCA37",
                                               command=lambda: services.add(),
                                               ).grid(row=1, pady=(6, 0))
-
-                        def recursive(_type, obj):
-                            if isinstance(obj, _type):
-                                return obj
-                            elif obj != _master:
-                                return recursive(_type, obj.master)
-                            else:
-                                return
-
-                        def mouse_off(e):
-                            try:
-                                if self.double:  # Allow double mouse click for setting service entry focus
-                                    self.double = False
-                                # If the current focus is a Service, and the clicked widget is not the focus
-                                elif isinstance((parent := (f := self.focus_get()).master.master),
-                                                self.Service | self.Service.Account
-                                                ) and e.widget != f:
-                                    if isinstance(parent, self.Service) and not parent.name:  # Currently adding service
-                                        # [parent == recursive(self.Service, e.widget)] =
-                                        #   Allow clicking within Service addition
-                                        # [e.widget.master == sorting] Allow clicking A-Z sorting
-                                        # ['addservice' in str(e.widget)] Make clicking the Add button do nothing
-                                        if (parent == recursive(self.Service, e.widget) or e.widget.master == sorting or
-                                                'addservice' in str(e.widget)):
-                                            return
-                                    # Clicking within account when adding
-                                    elif isinstance(parent, self.Service.Account) and not parent.username:
-                                        if (parent == recursive(self.Service.Account, e.widget) or
-                                                'addaccount' in str(e.widget)):
-                                            return
-                                    # Change focus if the widget is not AddService or AddAccount obj
-                                    # (so adding can take focus)
-                                    parent.handle_change(not any(x in str(e.widget) for x in
-                                                                 {'addservice', 'addaccount'}))
-                            except AttributeError:  # Is not Service
-                                pass
                         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                         super().__init__(_master, 390, 350, 0, fg_color='transparent')
-                        self._parent_canvas.bind_all('<Button-1>', mouse_off, '+')  # For editing
                         # So border goes fully around
                         self._scrollbar.configure(bg_color=TRANS), set_opacity(self._scrollbar, color=TRANS)
                         # 'double' for double click to set focus, 'adding' for in the process of adding new service
@@ -578,8 +646,8 @@ class GUI(ctk.CTk):
                         if not len(s):  # No services
                             self.special_message(self.no_services, True, '#40ACE3')
 
-                    def special_message(self, obj, show: bool, color: str = None):
-                        if show:
+                    def special_message(self, obj, _show: bool, color: str = None):
+                        if _show:
                             self.configure(width=388, height=348, border_width=2, border_color=color,
                                            scrollbar_button_color=TRANS)
                             obj.grid()
@@ -691,6 +759,8 @@ class GUI(ctk.CTk):
                               command=lambda: switch_screen(LoginScreen(master, True, self), True),
                               image=ctk.CTkImage(Image.open(f'{PATH}edit.png'), size=(16, 16))
                               ).place(x=0, y=GUI.HEIGHT - 80)
+                # For mouse_off binding
+                self.mb = Services.Service, Services.Service.Account, services, sorting
 
         class LoginScreen(self.Screen):
             class Content(ctk.CTkFrame):  # Separate frame to keep it vertically centered
@@ -742,7 +812,7 @@ class GUI(ctk.CTk):
                     label = ctk.CTkLabel(_self, text=f"{'Change' if change else 'Create' if new else 'Enter'} "
                                                      f"your password", font=(JB, 16), text_color='#000000',
                                          fg_color=TRANS)
-                    set_opacity(label, color=TRANS), label.grid(row=0, column=0, columnspan=2, sticky='w')
+                    set_opacity(label, color=TRANS), label.grid(row=0, column=0, sticky='w')
                     # Password Entry
                     _self.password = ctk.CTkEntry(_self, 300, 80, 0, 2, 'transparent', '#E4E4E4', '#B8B7B7',
                                                      '#000000', font=(JB, 28), show='*', validate='key',
@@ -751,12 +821,15 @@ class GUI(ctk.CTk):
                                                                                    _self.password.delete(0, 'end')))
                     _self.password.bind('<KeyRelease-Return>', check_password)
                     _self.password.bind('<KeyRelease>', reset)
+                    _self.password.bind('<Tab>', lambda _: 'break')  # Disables TAB within password entry
                     _self.button = ctk.CTkButton(_self, 50, 80, 0, fg_color='#55BB33', text='',
                                                  hover_color='#5BCA37', command=check_password,
                                                  image=ctk.CTkImage(Image.open(
                                                       f'{PATH}{"edit" if change else "chev_right"}.png'),
                                                       size=(22, 22) if change else (42, 42)))
                     # --
+                    Visibility(_self, _self.password, width=50, anchor='center').grid(
+                        row=0, column=1, sticky='e')
                     _self.password.grid(row=1, column=0), _self.button.grid(row=1, column=1)
 
             def __init__(self, master, new: bool, change: MainScreen = None):
@@ -815,6 +888,7 @@ class GUI(ctk.CTk):
             self.bind_all('<Button>', lambda _: r(), '+')
             self.bind_all('<KeyPress>', lambda _: r(), '+')
 
+        # noinspection PyUnresolvedReferences
         def inactivity_timer():
             change = None
             # Only process timer if screen is MainScreen or LoginScreen for changing password
@@ -823,12 +897,62 @@ class GUI(ctk.CTk):
                     self.timer += 1
                 elif self.timer == INACTIVITY_PERIOD:  # Execute timeout function
                     self.timer = -1  # Stop timer
-                    # noinspection PyUnresolvedReferences
+                    self.manager.write()  # Save Manager data
                     del self.manager  # Remove manager instance
                     if change:  # If in the LoginScreen for changing password, delete the preserved MainScreen
                         change.destroy()
                     switch_screen(LoginScreen(self, False))
             self.after(1000, inactivity_timer)
+
+        # 〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉〉
+        # For handling Service and Account entry editing
+        def recursive(i, obj):
+            # noinspection PyUnresolvedReferences
+            if isinstance(obj, i):
+                return obj
+            elif obj != self:
+                return recursive(i, obj.master)
+            else:
+                return
+
+        def instance(i, obj: tuple) -> int:
+            if isinstance(i, obj[0]):
+                return 1
+            elif isinstance(i, obj[1]):
+                return 2
+            else:
+                return 0
+
+        def mouse_off(e):
+            if isinstance(self.current_screen, MainScreen):  # Only MainScreen
+                # Unpack to Service, Account, Services() instance, sorting btn
+                ser, acc, ser_obj, sort = self.current_screen.mb
+                try:
+                    if ser_obj.double:  # Allow double mouse click for setting service entry focus
+                        ser_obj.double = False
+                    # If the current focus is a Service, and the clicked widget is not the focus
+                    elif ((i := instance((parent := (f := self.focus_get()).master.master), (ser, acc)))
+                          and e.widget != f):
+                        args = []
+                        if i == 1:  # Service
+                            if not parent.name:  # Currently adding service
+                                # [parent == recursive(ser, e.widget)] =
+                                #   Allow clicking within Service addition
+                                # [e.widget.master == sort] Allow clicking A-Z sorting
+                                # ['addservice' in str(e.widget)] Make clicking the Add button do nothing
+                                if (parent == recursive(ser, e.widget) or e.widget.master == sort or
+                                        'addservice' in str(e.widget)):
+                                    return
+                        else:  # Account
+                            args = [f.master]
+                            # Clicking within account when adding or add acc button
+                            if not parent.username and (parent == recursive(acc, e.widget)
+                                                        or 'addaccount' in str(e.widget)):
+                                return
+                        # Change focus if the widget is not AddService or AddAccount obj (so adding can take focus)
+                        parent.handle_change(not any(x in str(e.widget) for x in {'addservice', 'addaccount'}), *args)
+                except AttributeError:  # Is not Service
+                    pass
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         super().__init__(fg_color='#FBFBFB')
         # ctk.set_appearance_mode("dark")
@@ -842,6 +966,7 @@ class GUI(ctk.CTk):
         # --
         self.timer = 0
         inactivity_bindings(), inactivity_timer()
+        self.bind('<Button-1>', mouse_off, '+')  # For editing Services & Accounts
         self.mainloop()
 
 
