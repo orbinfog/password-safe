@@ -461,7 +461,7 @@ class GUI(ctk.CTk):
                                                         command=self.__deletion_confirmation, border_color='#CC0202')
                             self.add_acc = AddAccount(self)
                             self.error = (  # Tuple of error lambda, clear error lambda & object
-                                lambda o, f, x, y: (o.configure(text_color='#ff3333'), self.error[2].place(x=268, y=8)),
+                                lambda: (self.label.configure(text_color='#ff3333'), self.error[2].place(x=268, y=8)),
                                 lambda: (self.label.configure(text_color='#3D3D3D'), self.error[2].place_forget()),
                                 ctk.CTkLabel(self, text='Already exists', text_color='#eb2121', font=(JB, 12))
                             )
@@ -542,9 +542,9 @@ class GUI(ctk.CTk):
                         def __check_conflicting(self, _):
                             # Conflicting name (modified from current self.name)
                             if self.name != (new := self.label.get()) and new in manager.get_services():
-                                self.error[0](self.label, '#EAEAEA', 268, 8)  # Error lambda
+                                self.error[0]()  # Error lambda
                             else:  # Clear conflicting error message
-                                self.error[1](self.label, '#3D3D3D')  # Clear err lambda
+                                self.error[1]()  # Clear err lambda
 
                         # noinspection PyUnresolvedReferences
                         def __rename(self, _=None) -> bool:
@@ -597,7 +597,7 @@ class GUI(ctk.CTk):
                                 # --
                                 # If ESC, conflicting name or empty, reset
                                 if escape or self.error[2].winfo_ismapped() or is_empty(self.label.get()):
-                                    self.error[1](self.label, '#3D3D3D')  # Clear err lambda
+                                    self.error[1]()  # Clear err lambda
                                     # Replace with self.name
                                     self.label.delete(0, 'end'), self.label.insert(0, self.name)
                                 else:  # Otherwise confirm rename
