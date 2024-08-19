@@ -871,7 +871,8 @@ class GUI(ctk.CTk):
                     from ctypes import windll
                     def listen():
                         if windll.user32.GetKeyState(0x14):  # Turned on
-                            self.caps_lock.place(x=placement[0], y=placement[1])
+                            if not self.caps_lock.winfo_ismapped():
+                                self.caps_lock.place(x=placement[0], y=placement[1])
                         else:
                             self.caps_lock.place_forget()
                         self.after(1, listen)
