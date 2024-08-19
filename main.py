@@ -787,19 +787,23 @@ class GUI(ctk.CTk):
                         if len(entry := _self.password.get()) < MIN_PASS_LENGTH:
                             error()
                             return
-                        if change:  # Change password to new one
-                            # noinspection PyUnresolvedReferences
-                            self.manager.change_password(entry)
-                            switch_screen(change)  # Switch back to previous MainScreen (change var)
-                            return
-                        elif new:  # Skip checking as this is the creation of the password
-                            manager_wrapper(entry)
-                        else:  # Not new - login
-                            try:
+                        if not _self.processing:
+                            # Disable button while processing until it has finished
+                            _self.processing = True
+                            if change:  # Change password to new one
+                                # noinspection PyUnresolvedReferences
+                                self.manager.change_password(entry)
+                                switch_screen(change)  # Switch back to previous MainScreen (change var)
+                                return
+                            elif new:  # Skip checking as this is the creation of the password
                                 manager_wrapper(entry)
-                            except InvalidToken:
-                                error()
-                                return  # Return before reaching switch_screen
+                            else:  # Not new - login
+                                try:
+                                    manager_wrapper(entry)
+                                except InvalidToken:
+                                    error()
+                                    _self.processing = False
+                                    return  # Return before reaching switch_screen
                         # noinspection PyTypeChecker
                         switch_screen(MainScreen(self))  # Successful
 
@@ -810,6 +814,7 @@ class GUI(ctk.CTk):
                             _self.button.configure(fg_color='#55BB33', state='normal')
                     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                     super().__init__(master, fg_color='transparent')
+                    _self.processing = False
                     label = ctk.CTkLabel(_self, text=f"{'Change' if change else 'Create' if new else 'Enter'} "
                                                      f"your password", font=(JB, 16), text_color='#000000',
                                          fg_color=TRANS)
