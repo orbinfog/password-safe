@@ -714,7 +714,8 @@ class GUI(ctk.CTk):
                         # Entry box for query
                         self.query = ctk.CTkEntry(self, 147, 30, 0, 0, fg_color='transparent', text_color='#212121',
                                                   font=(JB, 18), validate='key', validatecommand=
-                                                  (self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'))
+                                                  (self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'),
+                                                  placeholder_text_color='#919191', placeholder_text='Search')
                         self.query.bind('<KeyRelease>', lambda _: services.query(self.query.get()))
                         self.state_check(), ctrl_backspace_bind(self.query), self.query.place(x=35, y=2)
 
