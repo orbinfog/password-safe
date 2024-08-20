@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 19/08/2024
+    - Jensen Trillo, Version pre-1.0, 20/08/2024
 
     - ``Python 3.11.6``
 
@@ -278,10 +278,19 @@ class GUI(ctk.CTk):
                                 # noinspection PyUnresolvedReferences
                                 class EntryObj(ctk.CTkEntry):
                                     def __init__(self, _master, username_: bool, **kwargs):
-                                        super().__init__(_master, 240, 25, 0, 0, placeholder_text_color='#919191',
+                                        # +2 for the cursor to be visible
+                                        super().__init__(_master, 242, 25, 0, 0, placeholder_text_color='#919191',
                                                          fg_color='transparent', validate='key',
                                                          validatecommand=_master.validation, **kwargs)
                                         self.username_, self.binding = username_, None
+                                        # ... overflow label
+                                        self.extended = ctk.CTkLabel(self, text='...', text_color='#919191',
+                                                                     font=('JB', 20))
+                                        self.extended.bind('<Button-1>', lambda _: (self.focus_set(), self.icursor(19)))
+                                        self.bind('<FocusIn>', lambda _: self.overflow(False))
+                                        self.bind('<FocusOut>', lambda _: self.overflow(True)
+                                                  if len(self.get()) > 18 else None)
+                                        # --
                                         self.bind('<KeyRelease-Escape>',
                                                   lambda _: _master.handle_change(True, self, True))
                                         self.bind('<FocusOut>',
@@ -291,21 +300,37 @@ class GUI(ctk.CTk):
                                             self.bind('<KeyRelease-Return>', lambda _:
                                                       _master.focus_set() if _master.rename(self) else None)
 
+                                    def overflow(self, on: bool):
+                                        if on:
+                                            self.extended.place(x=222, y=0)
+                                        else:
+                                            self.extended.place_forget()
+
                                     def unconfirmed_binding(self, obj):
                                         # Added to bindings() so they can be removed on create()
                                         # all() in lambda otherwise it would be called twice for handle_change()
-                                        self.binding = self.bind('<KeyRelease-Return>', lambda _: (
-                                            # Create if both inputs are full
-                                            self.master.create(enter=True) if all(not is_empty(x) for x in
-                                                                                  {self.master.username_obj.get(),
-                                                                                   self.master.password_obj.get()})
-                                            # Otherwise change focus to other input if not empty or conflicting
-                                            else obj.focus_set() if (not is_empty(self.get()) and not self.master.error)
-                                            else None
-                                        ))
+                                        def handle(e):
+                                            enter = str(e.keysym) == 'Return'
+                                            if self.master.error:  # Already exists
+                                                s, fg, txt = False, '#eb2121', 'Already exists'
+                                                if enter:  # Move back to conflicting username
+                                                    self.master.username_obj.focus_set()
+                                            # Allow creation
+                                            elif all(not is_empty(x) for x in
+                                                     {self.master.username_obj.get(), self.master.password_obj.get()}):
+                                                s, fg, txt = True, '#40ACE3', 'Create account'
+                                                if enter:
+                                                    self.master.create(enter=True)
+                                            else:  # Grey out button
+                                                s, fg, txt = False, '#b0b0b0', 'Create account'
+                                                if enter and not is_empty(self.get()):
+                                                    obj.focus_set()
+                                            self.master.master.add_acc.configure(state='normal' if s else 'disabled',
+                                                                                 fg_color=fg, text=txt)
+                                        self.binding = self._entry.bind('<KeyRelease>', handle, '+')
 
                                     def remove_binding(self):
-                                        self.unbind('<KeyRelease-Return>', self.binding)
+                                        self._entry.unbind('<KeyRelease>', self.binding)
                                         self.bind('<KeyRelease-Return>', lambda _: (
                                             self.master.focus_set() if self.master.rename(self)
                                             else None
@@ -313,14 +338,14 @@ class GUI(ctk.CTk):
                                 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                                 super().__init__(_master, 300, 82, 5, fg_color='#FFFFFF')
                                 self.grid_propagate(False), self.grid_anchor('center')
-                                self.username, self.password, self.error = username, password, False
+                                self.username, self.password, self.error, self.delete = username, password, False, True
                                 self.validation = (self.register(lambda t: ' ' not in t and len(t) <= MAX_USER_LENGTH),
                                                    '%P')
                                 # IMAGES
                                 garbage = ctk.CTkImage(i := Image.open(f'{PATH}garbage.png'))
                                 garbage_h = np_array(i)
                                 garbage_h[..., :-1] = (255, 10, 10)
-                                garbage_h = ctk.CTkImage(Image.fromarray(garbage_h))
+                                self.garbage_h = ctk.CTkImage(Image.fromarray(garbage_h))
                                 # --
                                 # Username + password entries
                                 self.username_obj = EntryObj(self, True, placeholder_text='Username',
@@ -329,23 +354,28 @@ class GUI(ctk.CTk):
                                                              text_color='#0E0D2C', font=(JBB, 20), show='*')
                                 # Buttons
                                 self.visibility = Visibility(self, self.password_obj, width=20, anchor='w')
-                                self.visibility.grid(row=1, column=1, sticky='w', padx=(12, 0))
+                                self.visibility.grid(row=1, column=1, sticky='w', padx=(10, 0))
                                 (delete := ctk.CTkButton(self, 18, 18, anchor='w', fg_color=TRANS,
                                                          hover_color=TRANS, text='', image=garbage,
                                                          command=lambda: (
-                                        (manager.delete_account(self.master.name, self.username), self.__delete())
+                                        ((manager.delete_account(self.master.name, self.username), self.__delete())
                                         if self.username else
                                         (self.__delete(), self.master.add_acc.configure(state='normal',
-                                                                                        fg_color='#55BB33'))
-                                ))).grid(row=0, column=1, padx=(13, 0))
+                                                                                        fg_color='#55BB33')))
+                                        if self.delete else None  # Only allow if delete
+                                ))).grid(row=0, column=1, padx=(11, 0))
                                 set_opacity(delete, color=TRANS)
-                                delete.bind('<Enter>', lambda _: delete.configure(image=garbage_h))
+                                delete.bind('<Enter>', lambda _: delete.configure(image=self.garbage_h)
+                                            if self.delete else None)
                                 delete.bind('<Leave>', lambda _: delete.configure(image=garbage))
 
                                 # BINDINGS
                                 self.username_obj.bind('<KeyRelease>', self.__check_conflicting)
                                 if username:  # User & pass is provided
-                                    self.username_obj.insert(0, username), self.password_obj.insert(0, password)
+                                    for o, v in {(self.username_obj, username), (self.password_obj, password)}:
+                                        o.insert(0, v)
+                                        if len(v) > 18:
+                                            o.overflow(True)
                                 else:  # Bindings have to be added here
                                     self.username_obj.unconfirmed_binding(self.password_obj)
                                     self.password_obj.unconfirmed_binding(self.username_obj)
@@ -368,9 +398,22 @@ class GUI(ctk.CTk):
                             def __delete(self):
                                 self.master.accounts.remove(self)
                                 self.username_obj.configure(text_color='#2A295E')  # Reset error text color
-                                if not len(manager.get_services()[self.master.name]):  # Change to 'Add Account'
-                                    self.master.add_acc.configure(text=f'Add account')
-                                self.destroy(), self.master.shift_accounts(False)
+                                self.__reset(), self.destroy(), self.master.shift_accounts(False)
+
+                            def __reset(self):
+                                self.master.add_acc.configure(
+                                    state='normal', fg_color='#55BB33', text=
+                                    f'Add{" another" if len(manager.get_services()[self.master.name]) else ""} account',
+                                    command=self.master.add_acc_cmd, hover_color='#5BCA37')
+                                for o in self.master.accounts:
+                                    o.delete = True
+                                try:  # Change to red delete icon if hovering over it
+                                    if str(d := self.winfo_containing(*self.winfo_pointerxy()).master).endswith(
+                                            '.!ctkbutton') and isinstance(recursive(type(self), d), type(self)):
+                                        # noinspection PyArgumentList
+                                        d.configure(image=self.garbage_h)
+                                except AttributeError:
+                                    pass
 
                             def rename(self, obj) -> bool:
                                 # Different name and not empty
@@ -389,22 +432,20 @@ class GUI(ctk.CTk):
 
                             # Convert into proper account - creates in Manager
                             def create(self, focus: bool = True, enter: bool = False):
-                                if not self.error:  # No conflicting username
-                                    self.username, self.password = self.username_obj.get(), self.password_obj.get()
-                                    self.master.add_acc.configure(state='normal', fg_color='#55BB33',
-                                                                  text=f'Add another account')  # >=1 account
-                                    manager.add_account(self.master.name, self.username, self.password)
-                                    # Change bindings
-                                    self.username_obj.remove_binding(), self.password_obj.remove_binding()
-                                    if focus:
-                                        self.focus_set()
-                                elif enter:
-                                    self.username_obj.focus_set()
+                                self.username, self.password = self.username_obj.get(), self.password_obj.get()
+                                manager.add_account(self.master.name, self.username, self.password)
+                                self.after(1, lambda: self.master.add_acc.configure(
+                                    text='Account created', state='disabled'))
+                                self.after(1200, self.__reset)
+                                # Change bindings
+                                self.username_obj.remove_binding(), self.password_obj.remove_binding()
+                                if focus:
+                                    self.focus_set()
 
                             def handle_change(self, change_focus: bool, obj, escape: bool = False,
                                               focusout: bool = False):
+                                obj.xview_moveto(0)  # Move to X=0
                                 if self.username:
-                                    obj.xview_moveto(0)  # Move to X=0
                                     if change_focus:
                                         self.focus_set()  # Remove focus from entry
                                     # If ESC, conflicting name or empty, reset
@@ -422,14 +463,13 @@ class GUI(ctk.CTk):
                                     # Cancel event if not confirmed so focus between entries is allowed
                                     if focusout and str(self) in str(self.focus_get()):
                                         return
-                                    self.master.add_acc.configure(state='normal', fg_color='#55BB33')
                                     self.__delete()
                                 # Save account once user and password
                                 else:
                                     # Allow focus between entries without confirming
                                     if focusout and str(self) in str(self.focus_get()):
                                         return
-                                    self.create(not focusout)  # Set focus if not FOCUSOUT
+                                    self.create(change_focus)
 
                         def __init__(self, _master, accounts: dict, name: str = None):
                             # Has to be own class for its identifying name in mouse_off()
@@ -437,7 +477,7 @@ class GUI(ctk.CTk):
                                 def __init__(self, m):
                                     super().__init__(m, 300, 25, 5, fg_color='#55BB33', text_color='#FAFAFA',
                                                      text=f'Add{" another" if len(accounts) > 0 else ""} account',
-                                                     font=(JB, 14), hover_color="#5BCA37", command=m.add_acc,
+                                                     font=(JB, 14), hover_color="#5BCA37", command=m.add_acc_cmd,
                                                      text_color_disabled='#FAFAFA')
                             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                             super().__init__(_master, 390, 45, 10, fg_color='#EAEAEA')
@@ -575,9 +615,13 @@ class GUI(ctk.CTk):
                                 except KeyError:  # Already exists
                                     return True
 
-                        def add_acc(self):
-                            self.add_acc.configure(state='disabled', fg_color='#b0b0b0')
-                            self.accounts.append(self.Account(self, focus=True))
+                        def add_acc_cmd(self):
+                            for o in self.accounts:
+                                o.delete = False  # Disable delete buttons of other accounts
+                            self.accounts.append(o := self.Account(self, focus=True))
+                            self.add_acc.configure(state='disabled', fg_color='#b0b0b0', text='Create account',
+                                                   # o.create() cmd to create account
+                                                   hover_color='#4AB9F1', command=o.create)
                             self.shift_accounts(True)
 
                         def shift_accounts(self, add: bool):
@@ -683,9 +727,10 @@ class GUI(ctk.CTk):
 
                     def add(self):
                         if not self.adding:
+                            self._parent_canvas.yview_moveto(0)  # Move Y to top
                             if not len(manager.get_services()):  # Only do it once - remove no services
                                 self.special_message(self.no_services, False)
-                            else:
+                            elif not is_empty(search.query.get()):
                                 search.query.delete(0, 'end')  # Clear search query
                                 self.query()  # Re-update results
                             # --
@@ -742,12 +787,15 @@ class GUI(ctk.CTk):
                 # ░░░░░░░░░░░░░░░░░░░
                 # SECOND ROW BUTTONS
                 (search := Search(self)).grid(row=1, column=0, sticky='w', padx=(0, 100))
+                sort = ctk.CTkImage(Image.open(f'{PATH}sort.png'),  size=(12, 10))
+                sort_flip = ctk.CTkImage(Image.open(f'{PATH}sort.png').transpose(Image.FLIP_LEFT_RIGHT), size=(12, 10))
                 (sorting := ctk.CTkButton(
                     self, 75, 35, 5, 2, fg_color='transparent', border_color='#000000', hover_color='#FFFFFF',
                     text='A-Z', text_color='#000000', font=(JBB, 20),
-                    image=ctk.CTkImage(Image.open(f'{PATH}sort.png'), size=(12, 10)),
+                    image=sort,
                     command=lambda: (
-                        sorting.configure(text=(order := 'A-Z' if sorting.cget('text') == 'Z-A' else 'Z-A')),
+                        sorting.configure(text=(order := 'A-Z' if sorting.cget('text') == 'Z-A' else 'Z-A'),
+                                          image=sort if order == 'A-Z' else sort_flip),
                         services.sort(order != 'A-Z')
                     ))).grid(row=1, column=1, sticky='e')  # Sorting A-Z, Z-A
                 AddService(self).grid(row=1, column=2, sticky='e')  # Add account button
@@ -937,27 +985,29 @@ class GUI(ctk.CTk):
                 try:
                     if ser_obj.double:  # Allow double mouse click for setting service entry focus
                         ser_obj.double = False
-                    # If the current focus is a Service, and the clicked widget is not the focus
+                    # If the current focus is a Service/Account, and the clicked widget is not the focus
                     elif ((i := instance((parent := (f := self.focus_get()).master.master), (ser, acc)))
                           and e.widget != f):
                         args = []
                         if i == 1:  # Service
-                            if not parent.name:  # Currently adding service
-                                # [parent == recursive(ser, e.widget)] =
-                                #   Allow clicking within Service addition
-                                # [e.widget.master == sort] Allow clicking A-Z sorting
-                                # ['addservice' in str(e.widget)] Make clicking the Add button do nothing
-                                if (parent == recursive(ser, e.widget) or e.widget.master == sort or
-                                        'addservice' in str(e.widget)):
-                                    return
+                            # Currently adding service
+                            # [parent == recursive(ser, e.widget)] =
+                            #   Allow clicking within Service addition
+                            # [e.widget.master == sort] Allow clicking A-Z sorting
+                            # ['addservice' in str(e.widget)] Make clicking the Add button do nothing
+                            if not parent.name and (parent == recursive(ser, e.widget) or e.widget.master == sort or
+                                                    'addservice' in str(e.widget)):
+                                return
                         else:  # Account
                             args = [f.master]
                             # Clicking within account when adding or add acc button
                             if not parent.username and (parent == recursive(acc, e.widget)
                                                         or 'addaccount' in str(e.widget)):
                                 return
-                        # Change focus if the widget is not AddService or AddAccount obj (so adding can take focus)
-                        parent.handle_change(not any(x in str(e.widget) for x in {'addservice', 'addaccount'}), *args)
+                        # Change focus if the widget is not AddService, AddAccount or EntryObj obj
+                        # (so adding can take focus - EntryObj so that overflow works)
+                        parent.handle_change(not any(x in str(e.widget) for x in {'addservice', 'addaccount',
+                                                                                  '.!entryobj'}), *args)
                 except AttributeError:  # Is not Service
                     pass
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
