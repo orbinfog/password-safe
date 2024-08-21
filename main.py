@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from gzip import open as gzip_open
 from atexit import register as exit_register
-from misc_utils import init_kill_handlers, resource_path, is_empty, percentage
+from misc_utils import init_kill_handlers, resource_path, is_empty
 from tkinter_utils import load_fonts, set_opacity
 from os import path as os_path
 from PIL import Image, ImageEnhance
@@ -442,7 +442,7 @@ class GUI(ctk.CTk):
                                 return True  # return for ENTER bind
 
                             # Convert into proper account - creates in Manager
-                            def create(self, focus: bool = True, enter: bool = False):
+                            def create(self, focus: bool = True):
                                 self.username, self.password = self.username_obj.get(), self.password_obj.get()
                                 manager.add_account(self.master.name, self.username, self.password)
                                 self.after(1, lambda: self.master.add_acc.configure(
