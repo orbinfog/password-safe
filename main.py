@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 21/08/2024
+    - Jensen Trillo, Version 1.0, 21/08/2024
 
     - ``Python 3.11.6``
 
@@ -21,8 +21,8 @@ from os import path as os_path
 from PIL import Image, ImageEnhance
 from numpy import array as np_array
 # DO NOT TOUCH section
-__version__ = 'pre-1.0'
-PATH = resource_path('assets/')  # Absolute asset path for files/resources
+__version__ = '1.0'
+PATH = resource_path('assets/', False)  # Absolute asset path for files/resources
 TRANS = '#feffff'  # Transparent color hex
 # Font consts (to make usages smaller)
 JB = 'JetBrains Mono NL'

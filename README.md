@@ -19,11 +19,9 @@ The following list is of the required dependencies for the program (can also be 
 ```
 cryptography==42.0.4
 customtkinter==5.2.2
-misc_utils==1.2
 numpy==2.1.0
 Pillow==10.4.0
-tkinter_utils==1.2.1
 ujson==5.9.0
 ```
 
-Once all dependencies are installed, you can run the program. It is important to note that the program only works for **Windows** operating systems due to using `Win32` API for transparency and Caps Lock detection. Other operating systems will be addressed in the future.
+Once all dependencies are installed, you can run the `main.py` file. It is important to note that the program only works for **Windows** operating systems due to using `Win32` API for transparency and Caps Lock detection. Other operating systems will be addressed in the future.
