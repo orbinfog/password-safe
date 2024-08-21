@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version pre-1.0, 20/08/2024
+    - Jensen Trillo, Version pre-1.0, 19/08/2024
 
     - ``Python 3.11.6``
 
@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from gzip import open as gzip_open
 from atexit import register as exit_register
-from misc_utils import init_kill_handlers, resource_path, is_empty
+from misc_utils import init_kill_handlers, resource_path, is_empty, percentage
 from tkinter_utils import load_fonts, set_opacity
 from os import path as os_path
 from PIL import Image, ImageEnhance
@@ -339,6 +339,7 @@ class GUI(ctk.CTk):
                                 super().__init__(_master, 300, 82, 5, fg_color='#FFFFFF')
                                 self.grid_propagate(False), self.grid_anchor('center')
                                 self.username, self.password, self.error, self.delete = username, password, False, True
+                                self.current_conflict = None
                                 self.validation = (self.register(lambda t: ' ' not in t and len(t) <= MAX_USER_LENGTH),
                                                    '%P')
                                 # IMAGES
@@ -385,19 +386,29 @@ class GUI(ctk.CTk):
                                 if focus:
                                     self.username_obj.focus_set()
 
+                            def __reset_conflict(self):
+                                for o in {self.username_obj, self.current_conflict}:
+                                    if o:
+                                        o.configure(text_color='#2A295E')
+                                self.current_conflict = None
+
                             def __check_conflicting(self, _):
                                 # Conflicting name (modified from current self.username)
                                 if (self.username != (new := self.username_obj.get()) and
                                         new in manager.get_services()[self.master.name]):
                                     self.username_obj.configure(text_color='#ff3333')
+                                    for o in self.master.accounts:  # Set the existing account text to red
+                                        if o != self and o.username_obj.get() == new:
+                                            self.current_conflict = o.username_obj
+                                            o.username_obj.configure(text_color='#ff3333')
+                                            break
                                     self.error = True
                                 else:  # Clear conflicting error message
-                                    self.username_obj.configure(text_color='#2A295E')
+                                    self.__reset_conflict()
                                     self.error = False
 
                             def __delete(self):
                                 self.master.accounts.remove(self)
-                                self.username_obj.configure(text_color='#2A295E')  # Reset error text color
                                 self.__reset(), self.destroy(), self.master.shift_accounts(False)
 
                             def __reset(self):
@@ -450,7 +461,7 @@ class GUI(ctk.CTk):
                                         self.focus_set()  # Remove focus from entry
                                     # If ESC, conflicting name or empty, reset
                                     if escape or self.error or is_empty(obj.get()):
-                                        self.username_obj.configure(text_color='#2A295E')  # Reset error text color
+                                        self.__reset_conflict()  # Reset error text color
                                         # Replace text
                                         obj.delete(0, 'end')
                                         obj.insert(0, self.username if obj.username_ else self.password)
@@ -483,6 +494,7 @@ class GUI(ctk.CTk):
                             super().__init__(_master, 390, 45, 10, fg_color='#EAEAEA')
                             self.grid_propagate(False), self.grid_anchor('nw')
                             self.name, self.delete_step, self.dropdown, self.f_dropdown = name, False, False, True
+                            self.current_conflict = None
                             self.accounts = []  # List of Account objects
                             # Chevron + Service name
                             self.img = ImageEnhance.Brightness(Image.open(f'{PATH}chev_right.png')).enhance(0)
@@ -502,7 +514,7 @@ class GUI(ctk.CTk):
                             self.add_acc = AddAccount(self)
                             self.error = (  # Tuple of error lambda, clear error lambda & object
                                 lambda: (self.label.configure(text_color='#ff3333'), self.error[2].place(x=268, y=8)),
-                                lambda: (self.label.configure(text_color='#3D3D3D'), self.error[2].place_forget()),
+                                lambda: (self.__reset_conflict(), self.error[2].place_forget()),
                                 ctk.CTkLabel(self, text='Already exists', text_color='#eb2121', font=(JB, 12))
                             )
 
@@ -560,12 +572,16 @@ class GUI(ctk.CTk):
                             # --
                             self.dropdown = not self.dropdown
 
-                        # noinspection PyUnresolvedReferences
+                        # noinspection PyUnresolvedReferences,PyProtectedMember
                         def __deletion_confirmation(self):
                             if not self.delete_step:
                                 self.delete.configure(border_width=1, text='Confirm deletion')
                                 self.delete_step = True
                             else:
+                                # Ensures Y pos is proper upon deletion
+                                self.master._parent_canvas.yview_moveto(y if (
+                                    y := self.master._parent_canvas.yview()[0] - 0.1) > 0 else 0)
+                                # --
                                 manager.delete_service(self.name)
                                 self.destroy(), self.master.service_objects.remove(self)
                                 if len(_s := manager.get_services()) == 1:  # Only one service, clear search query
@@ -576,13 +592,24 @@ class GUI(ctk.CTk):
                                     # Has to redo query in case the deleted service is the only one left,
                                     # so that query can place 'No Results' msg
                                     self.master.query(q)
-                                # self.master._parent_canvas.yview_moveto(v)
                                 search.state_check(_s)  # Check if # of services allows search to be enabled
+
+                        def __reset_conflict(self):
+                            for o in {self.label, self.current_conflict}:
+                                if o:
+                                    o.configure(text_color='#3D3D3D')
+                            self.current_conflict = None
 
                         def __check_conflicting(self, _):
                             # Conflicting name (modified from current self.name)
                             if self.name != (new := self.label.get()) and new in manager.get_services():
                                 self.error[0]()  # Error lambda
+                                # noinspection PyUnresolvedReferences
+                                for o in self.master.service_objects:  # Set the existing service text to red
+                                    if o != self and o.label.get() == new:
+                                        self.current_conflict = o.label
+                                        o.label.configure(text_color='#ff3333')
+                                        break
                             else:  # Clear conflicting error message
                                 self.error[1]()  # Clear err lambda
 
@@ -654,6 +681,7 @@ class GUI(ctk.CTk):
                                         return  # Return before removing
                                 # --
                                 try:
+                                    self.__reset_conflict()  # In case of conflict
                                     self.destroy(), self.master.service_objects.remove(self)
                                     if not len(manager.get_services()):  # Place no services message
                                         self.master.special_message(self.master.no_services, True, '#40ACE3')
