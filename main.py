@@ -1,7 +1,7 @@
 """
     Password Safe
 
-    - Jensen Trillo, Version 1.0, 21/08/2024
+    - Jensen Trillo, Version 1.0, 22/08/2024
 
     - ``Python 3.11.6``
 
@@ -320,7 +320,7 @@ class GUI(ctk.CTk):
                                                      {self.master.username_obj.get(), self.master.password_obj.get()}):
                                                 s, fg, txt = True, '#40ACE3', 'Create account'
                                                 if enter:
-                                                    self.master.create(enter=True)
+                                                    self.master.create()
                                             else:  # Grey out button
                                                 s, fg, txt = False, '#b0b0b0', 'Create account'
                                                 if enter and not is_empty(self.get()):
@@ -386,11 +386,14 @@ class GUI(ctk.CTk):
                                 if focus:
                                     self.username_obj.focus_set()
 
+                            def __reset_existing(self):
+                                if self.current_conflict:  # Is set
+                                    self.current_conflict.configure(text_color='#2A295E')
+                                    self.current_conflict = None
+
                             def __reset_conflict(self):
-                                for o in {self.username_obj, self.current_conflict}:
-                                    if o:
-                                        o.configure(text_color='#2A295E')
-                                self.current_conflict = None
+                                self.username_obj.configure(text_color='#2A295E')
+                                self.__reset_existing()
 
                             def __check_conflicting(self, _):
                                 # Conflicting name (modified from current self.username)
@@ -399,6 +402,7 @@ class GUI(ctk.CTk):
                                     self.username_obj.configure(text_color='#ff3333')
                                     for o in self.master.accounts:  # Set the existing account text to red
                                         if o != self and o.username_obj.get() == new:
+                                            self.__reset_existing()  # Reset prior if any
                                             self.current_conflict = o.username_obj
                                             o.username_obj.configure(text_color='#ff3333')
                                             break
@@ -408,7 +412,7 @@ class GUI(ctk.CTk):
                                     self.error = False
 
                             def __delete(self):
-                                self.master.accounts.remove(self)
+                                self.master.accounts.remove(self), self.__reset_existing()
                                 self.__reset(), self.destroy(), self.master.shift_accounts(False)
 
                             def __reset(self):
@@ -585,6 +589,7 @@ class GUI(ctk.CTk):
                                 manager.delete_service(self.name)
                                 self.destroy(), self.master.service_objects.remove(self)
                                 if len(_s := manager.get_services()) == 1:  # Only one service, clear search query
+                                    search.state_check(_s)  # Check if # of services allows search to be enabled
                                     search.query.delete(0, 'end'), self.master.query()
                                 if not len(_s):  # No services at all
                                     self.master.special_message(self.master.no_services, True, '#40ACE3')
@@ -592,13 +597,15 @@ class GUI(ctk.CTk):
                                     # Has to redo query in case the deleted service is the only one left,
                                     # so that query can place 'No Results' msg
                                     self.master.query(q)
-                                search.state_check(_s)  # Check if # of services allows search to be enabled
+
+                        def __reset_existing(self):
+                            if self.current_conflict:  # Is set
+                                self.current_conflict.configure(text_color='#3D3D3D')
+                                self.current_conflict = None
 
                         def __reset_conflict(self):
-                            for o in {self.label, self.current_conflict}:
-                                if o:
-                                    o.configure(text_color='#3D3D3D')
-                            self.current_conflict = None
+                            self.label.configure(text_color='#3D3D3D')
+                            self.__reset_existing()
 
                         def __check_conflicting(self, _):
                             # Conflicting name (modified from current self.name)
@@ -607,6 +614,7 @@ class GUI(ctk.CTk):
                                 # noinspection PyUnresolvedReferences
                                 for o in self.master.service_objects:  # Set the existing service text to red
                                     if o != self and o.label.get() == new:
+                                        self.__reset_existing()  # Reset prior if any
                                         self.current_conflict = o.label
                                         o.label.configure(text_color='#ff3333')
                                         break
@@ -789,7 +797,10 @@ class GUI(ctk.CTk):
                                                   font=(JB, 18), validate='key', validatecommand=
                                                   (self.register(lambda t: len(t) <= MAX_SERVICE_LENGTH), '%P'),
                                                   placeholder_text_color='#919191', placeholder_text='Search')
-                        self.query.bind('<KeyRelease>', lambda _: services.query(self.query.get()))
+                        self.query.bind('<KeyRelease>', lambda e: (
+                            self.query.delete(0, 'end') if str(e.keysym) == 'Escape' else None,
+                            services.query(self.query.get())
+                        ))
                         self.state_check(), ctrl_backspace_bind(self.query), self.query.place(x=35, y=2)
 
                 class AddService(ctk.CTkFrame):
@@ -845,6 +856,8 @@ class GUI(ctk.CTk):
                 # self is _self here so switch_screen() can access parent CTk
                 def __init__(_self, master, new: bool, change: MainScreen = None):
                     def validate(action, text: str) -> bool:  # Validate command
+                        if text == 'Password changed':
+                            return True
                         if int(action):  # Insert
                             try:
                                 text.encode('ascii')  # Raise EncodeError if Unicode
@@ -869,7 +882,14 @@ class GUI(ctk.CTk):
                             if change:  # Change password to new one
                                 # noinspection PyUnresolvedReferences
                                 self.manager.change_password(entry)
-                                switch_screen(change)  # Switch back to previous MainScreen (change var)
+                                # Switch back to previous MainScreen (change var), after 1.2s animation
+                                _self.focus_set()  # Remove focus from entry
+                                _self.button.configure(fg_color='#40ACE3', state='disabled')
+                                visibility.configure(state='disabled')
+                                _self.password.delete(0, 'end'), _self.password.insert(0, 'Password changed')
+                                _self.password.configure(border_color='#40ACE3', state='disabled', show='',
+                                                         text_color='#3295C7', justify='center', font=(JB, 20))
+                                self.after(1200, lambda: switch_screen(change))
                                 return
                             elif new:  # Skip checking as this is the creation of the password
                                 manager_wrapper(entry)
@@ -910,7 +930,7 @@ class GUI(ctk.CTk):
                                                       f'{PATH}{"edit" if change else "chev_right"}.png'),
                                                       size=(22, 22) if change else (42, 42)))
                     # --
-                    Visibility(_self, _self.password, width=50, anchor='center').grid(
+                    (visibility := Visibility(_self, _self.password, width=50, anchor='center')).grid(
                         row=0, column=1, sticky='e')
                     _self.password.grid(row=1, column=0), _self.button.grid(row=1, column=1)
 
@@ -927,7 +947,8 @@ class GUI(ctk.CTk):
                 placement = (45, 363)  # Default X/Y for Caps Lock
                 if change:  # Back button
                     back = ctk.CTkButton(self, 32, 32, 0, text='', fg_color=TRANS,
-                                         hover_color=TRANS, command=lambda: switch_screen(change))
+                                         hover_color=TRANS, command=lambda: switch_screen(change) if not c.processing
+                                         else None)
                     img_button_brightness(back, Image.open(f'{PATH}back_arrow.png'), (32, 32), 1.3)
                     set_opacity(back, color=TRANS), back.place(x=45, y=45)
                 if new:  # Label for first time startup warning user to remember password
